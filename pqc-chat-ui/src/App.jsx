@@ -11,7 +11,6 @@ import {
   arrayUnion,
   collection,
   doc,
-  getDoc,
   increment,
   onSnapshot,
   orderBy,
@@ -39,6 +38,7 @@ const conversationIdFor = (uidA, uidB) => [uidA, uidB].sort().join("_");
 
 function App() {
   const [authUser, setAuthUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   const [profile, setProfile] = useState(null);
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({
@@ -66,6 +66,7 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setAuthUser(user);
       setAuthError("");
+      setAuthReady(true);
 
       if (!user) {
         setProfile(null);
@@ -75,29 +76,30 @@ function App() {
       }
 
       const userRef = doc(db, "users", user.uid);
-      const existingDoc = await getDoc(userRef);
-
-      if (!existingDoc.exists()) {
-        await setDoc(userRef, {
-          uid: user.uid,
-          displayName: user.displayName || user.email?.split("@")[0] || "New User",
-          email: user.email,
-          phoneNumber: normalizePhone(authForm.phoneNumber),
-          contacts: [],
-          isOnline: true,
-          lastSeen: serverTimestamp(),
-          createdAt: serverTimestamp(),
-        });
-      } else {
-        await updateDoc(userRef, {
-          isOnline: true,
-          lastSeen: serverTimestamp(),
-        });
+      try {
+        await setDoc(
+          userRef,
+          {
+            uid: user.uid,
+            displayName: user.displayName || user.email?.split("@")[0] || "New User",
+            email: user.email || "",
+            isOnline: true,
+            lastSeen: serverTimestamp(),
+            createdAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        setAuthError(
+          navigator.onLine
+            ? "Unable to load your profile right now. Please retry."
+            : "You're offline. Reconnect to load chat data."
+        );
       }
     });
 
     return unsubscribe;
-  }, [authForm.phoneNumber]);
+  }, []);
 
   useEffect(() => {
     if (!authUser) return undefined;
@@ -108,10 +110,14 @@ function App() {
     });
 
     const markOffline = async () => {
-      await updateDoc(userRef, {
-        isOnline: false,
-        lastSeen: serverTimestamp(),
-      });
+      await setDoc(
+        userRef,
+        {
+          isOnline: false,
+          lastSeen: serverTimestamp(),
+        },
+        { merge: true }
+      );
     };
 
     window.addEventListener("beforeunload", markOffline);
@@ -162,7 +168,7 @@ function App() {
     );
 
     const conversationRef = doc(db, "conversations", conversationId);
-    updateDoc(conversationRef, { [`unreadBy.${authUser.uid}`]: 0 });
+    setDoc(conversationRef, { unreadBy: { [authUser.uid]: 0 } }, { merge: true });
 
     const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
       setMessages(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() })));
@@ -396,6 +402,17 @@ function App() {
 
     await signOut(auth);
   };
+
+  if (!authReady) {
+    return (
+      <div className="auth-shell">
+        <div className="auth-card">
+          <h1>MyChatApp</h1>
+          <p>Checking your session...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!authUser) {
     return (
