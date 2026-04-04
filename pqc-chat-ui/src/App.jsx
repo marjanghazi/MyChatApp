@@ -11,9 +11,10 @@ import {
   arrayUnion,
   collection,
   doc,
+  getDocs,
   increment,
-  onSnapshot,
   orderBy,
+  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
@@ -24,7 +25,21 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { auth, db, storage } from "./firebase";
 import "./App.css";
 
-const normalizePhone = (raw) => raw.replace(/[^\d+]/g, "");
+const normalizePhone = (raw) => raw.replace(/\D/g, "");
+const buildPhoneVariants = (raw) => {
+  const digits = normalizePhone(raw);
+  const variants = new Set([digits]);
+
+  if (digits.startsWith("0") && digits.length > 1) {
+    variants.add(`92${digits.slice(1)}`);
+  }
+
+  if (digits.startsWith("92") && digits.length > 2) {
+    variants.add(`0${digits.slice(2)}`);
+  }
+
+  return [...variants].filter(Boolean);
+};
 
 const formatTime = (dateValue) => {
   if (!dateValue) return "";
@@ -67,6 +82,9 @@ function App() {
       setAuthUser(user);
       setAuthError("");
       setAuthReady(true);
+      setContactPhone("");
+      setContactFeedback("");
+      setSearch("");
 
       if (!user) {
         setProfile(null);
@@ -178,14 +196,28 @@ function App() {
   }, [authUser, selectedUser]);
 
   const contacts = useMemo(() => {
-    if (!profile?.contacts?.length) return [];
+    const visibleUsers = new Map();
+    const contactsSet = new Set((profile?.contacts || []).map(normalizePhone));
+    const usersById = new Map(allUsers.map((user) => [user.uid, user]));
 
-    const contactsSet = new Set(profile.contacts.map(normalizePhone));
+    allUsers.forEach((user) => {
+      if (contactsSet.has(normalizePhone(user.phoneNumber || ""))) {
+        visibleUsers.set(user.uid, user);
+      }
+    });
 
-    return allUsers
-      .filter((user) => contactsSet.has(normalizePhone(user.phoneNumber || "")))
-      .sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
-  }, [allUsers, profile]);
+    Object.values(conversations).forEach((conversation) => {
+      const partnerUid = (conversation.participants || []).find((uid) => uid !== authUser?.uid);
+      if (!partnerUid) return;
+
+      const partner = usersById.get(partnerUid);
+      if (partner) {
+        visibleUsers.set(partner.uid, partner);
+      }
+    });
+
+    return [...visibleUsers.values()].sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
+  }, [allUsers, authUser?.uid, conversations, profile]);
 
   const filteredUsers = useMemo(() => {
     const value = search.trim().toLowerCase();
@@ -212,23 +244,24 @@ function App() {
 
     try {
       if (authMode === "register") {
-        const normalizedPhone = normalizePhone(authForm.phoneNumber);
-        if (!normalizedPhone) {
+        const phoneVariants = buildPhoneVariants(authForm.phoneNumber);
+        const normalizedPhone = phoneVariants[0];
+        if (!normalizedPhone || phoneVariants.length === 0) {
           throw new Error("A valid phone number is required.");
         }
 
-        const existingPhoneQuery = query(collection(db, "users"), where("phoneNumber", "==", normalizedPhone));
+        const existingPhoneQuery = query(collection(db, "users"), where("phoneNumber", "in", phoneVariants));
+        const existingVariantQuery = query(
+          collection(db, "users"),
+          where("phoneLookupKeys", "array-contains-any", phoneVariants)
+        );
 
-        let phoneAlreadyTaken = false;
-        await new Promise((resolve) => {
-          const unsubscribe = onSnapshot(existingPhoneQuery, (snapshot) => {
-            phoneAlreadyTaken = !snapshot.empty;
-            unsubscribe();
-            resolve();
-          });
-        });
+        const [exactPhoneSnapshot, variantSnapshot] = await Promise.all([
+          getDocs(existingPhoneQuery),
+          getDocs(existingVariantQuery),
+        ]);
 
-        if (phoneAlreadyTaken) {
+        if (!exactPhoneSnapshot.empty || !variantSnapshot.empty) {
           throw new Error("This phone number is already linked to another account.");
         }
 
@@ -242,6 +275,7 @@ function App() {
           displayName: authForm.displayName.trim(),
           email: authForm.email.trim(),
           phoneNumber: normalizedPhone,
+          phoneLookupKeys: phoneVariants,
           contacts: [],
           isOnline: true,
           lastSeen: serverTimestamp(),
@@ -263,36 +297,44 @@ function App() {
     event.preventDefault();
     if (!authUser || !contactPhone.trim()) return;
 
-    const normalizedPhone = normalizePhone(contactPhone);
-    const phoneQuery = query(collection(db, "users"), where("phoneNumber", "==", normalizedPhone));
+    const phoneVariants = buildPhoneVariants(contactPhone);
+    if (phoneVariants.length === 0) {
+      setContactFeedback("Please enter a valid phone number.");
+      return;
+    }
 
-    await new Promise((resolve) => {
-      const unsubscribe = onSnapshot(phoneQuery, async (snapshot) => {
-        if (snapshot.empty) {
-          setContactFeedback("No registered user found with that number.");
-          unsubscribe();
-          resolve();
-          return;
-        }
+    const directMatchQuery = query(collection(db, "users"), where("phoneNumber", "in", phoneVariants));
+    const variantMatchQuery = query(
+      collection(db, "users"),
+      where("phoneLookupKeys", "array-contains-any", phoneVariants)
+    );
 
-        const candidate = snapshot.docs[0].data();
-        if (candidate.uid === authUser.uid) {
-          setContactFeedback("You cannot add your own number.");
-          unsubscribe();
-          resolve();
-          return;
-        }
+    const [directMatchSnapshot, variantMatchSnapshot] = await Promise.all([
+      getDocs(directMatchQuery),
+      getDocs(variantMatchQuery),
+    ]);
 
-        await updateDoc(doc(db, "users", authUser.uid), {
-          contacts: arrayUnion(normalizedPhone),
-        });
+    const candidatesById = new Map();
+    directMatchSnapshot.docs.forEach((entry) => candidatesById.set(entry.id, entry.data()));
+    variantMatchSnapshot.docs.forEach((entry) => candidatesById.set(entry.id, entry.data()));
 
-        setContactFeedback(`Saved ${candidate.displayName} to your contacts.`);
-        setContactPhone("");
-        unsubscribe();
-        resolve();
-      });
+    const candidate = [...candidatesById.values()][0];
+    if (!candidate) {
+      setContactFeedback("No registered user found with that number.");
+      return;
+    }
+
+    if (candidate.uid === authUser.uid) {
+      setContactFeedback("You cannot add your own number.");
+      return;
+    }
+
+    await updateDoc(doc(db, "users", authUser.uid), {
+      contacts: arrayUnion(candidate.phoneNumber),
     });
+
+    setContactFeedback(`Saved ${candidate.displayName} to your contacts.`);
+    setContactPhone("");
   };
 
   const updateTypingState = async (isTyping) => {
@@ -527,7 +569,12 @@ function App() {
             type="tel"
             placeholder="Add contact by phone"
             value={contactPhone}
-            onChange={(event) => setContactPhone(event.target.value)}
+            onChange={(event) => {
+              setContactPhone(event.target.value);
+              if (contactFeedback) {
+                setContactFeedback("");
+              }
+            }}
           />
           <button type="submit">Add</button>
         </form>
