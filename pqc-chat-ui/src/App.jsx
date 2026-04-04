@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -8,9 +8,11 @@ import {
 } from "firebase/auth";
 import {
   addDoc,
+  arrayUnion,
   collection,
   doc,
   getDoc,
+  increment,
   onSnapshot,
   orderBy,
   query,
@@ -19,45 +21,54 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { auth, db } from "./firebase";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { auth, db, storage } from "./firebase";
 import "./App.css";
+
+const normalizePhone = (raw) => raw.replace(/[^\d+]/g, "");
 
 const formatTime = (dateValue) => {
   if (!dateValue) return "";
 
   const date = typeof dateValue?.toDate === "function" ? dateValue.toDate() : new Date(dateValue);
 
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
 const conversationIdFor = (uidA, uidB) => [uidA, uidB].sort().join("_");
 
 function App() {
   const [authUser, setAuthUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({
     displayName: "",
+    phoneNumber: "",
     email: "",
     password: "",
   });
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
 
-  const [users, setUsers] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [conversations, setConversations] = useState({});
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState("");
   const [search, setSearch] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactFeedback, setContactFeedback] = useState("");
+  const [sendingAttachment, setSendingAttachment] = useState(false);
+
+  const typingTimeoutRef = useRef(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setAuthUser(user);
       setAuthError("");
+
       if (!user) {
+        setProfile(null);
         setSelectedUser(null);
         setMessages([]);
         return;
@@ -65,32 +76,58 @@ function App() {
 
       const userRef = doc(db, "users", user.uid);
       const existingDoc = await getDoc(userRef);
+
       if (!existingDoc.exists()) {
         await setDoc(userRef, {
           uid: user.uid,
           displayName: user.displayName || user.email?.split("@")[0] || "New User",
           email: user.email,
-          photoURL: user.photoURL || "",
-          createdAt: serverTimestamp(),
+          phoneNumber: normalizePhone(authForm.phoneNumber),
+          contacts: [],
+          isOnline: true,
           lastSeen: serverTimestamp(),
+          createdAt: serverTimestamp(),
         });
       } else {
         await updateDoc(userRef, {
+          isOnline: true,
           lastSeen: serverTimestamp(),
         });
       }
     });
 
     return unsubscribe;
-  }, []);
+  }, [authForm.phoneNumber]);
+
+  useEffect(() => {
+    if (!authUser) return undefined;
+
+    const userRef = doc(db, "users", authUser.uid);
+    const unsubscribe = onSnapshot(userRef, (snapshot) => {
+      setProfile(snapshot.exists() ? snapshot.data() : null);
+    });
+
+    const markOffline = async () => {
+      await updateDoc(userRef, {
+        isOnline: false,
+        lastSeen: serverTimestamp(),
+      });
+    };
+
+    window.addEventListener("beforeunload", markOffline);
+    return () => {
+      window.removeEventListener("beforeunload", markOffline);
+      markOffline();
+      unsubscribe();
+    };
+  }, [authUser]);
 
   useEffect(() => {
     if (!authUser) return undefined;
 
     const usersQuery = query(collection(db, "users"), where("uid", "!=", authUser.uid));
     const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
-      const nextUsers = snapshot.docs.map((entry) => entry.data());
-      setUsers(nextUsers);
+      setAllUsers(snapshot.docs.map((entry) => entry.data()));
     });
 
     return unsubscribe;
@@ -106,8 +143,8 @@ function App() {
 
     const unsubscribe = onSnapshot(conversationsQuery, (snapshot) => {
       const map = {};
-      snapshot.forEach((conversationDoc) => {
-        map[conversationDoc.id] = conversationDoc.data();
+      snapshot.forEach((entry) => {
+        map[entry.id] = entry.data();
       });
       setConversations(map);
     });
@@ -124,6 +161,9 @@ function App() {
       orderBy("createdAt", "asc")
     );
 
+    const conversationRef = doc(db, "conversations", conversationId);
+    updateDoc(conversationRef, { [`unreadBy.${authUser.uid}`]: 0 });
+
     const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
       setMessages(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() })));
     });
@@ -131,16 +171,33 @@ function App() {
     return unsubscribe;
   }, [authUser, selectedUser]);
 
+  const contacts = useMemo(() => {
+    if (!profile?.contacts?.length) return [];
+
+    const contactsSet = new Set(profile.contacts.map(normalizePhone));
+
+    return allUsers
+      .filter((user) => contactsSet.has(normalizePhone(user.phoneNumber || "")))
+      .sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
+  }, [allUsers, profile]);
+
   const filteredUsers = useMemo(() => {
     const value = search.trim().toLowerCase();
-    if (!value) return users;
+    if (!value) return contacts;
 
-    return users.filter((user) => {
+    return contacts.filter((user) => {
       const name = user.displayName?.toLowerCase() || "";
       const email = user.email?.toLowerCase() || "";
-      return name.includes(value) || email.includes(value);
+      const phone = user.phoneNumber?.toLowerCase() || "";
+      return name.includes(value) || email.includes(value) || phone.includes(value);
     });
-  }, [search, users]);
+  }, [contacts, search]);
+
+  const selectedConversation =
+    authUser && selectedUser ? conversations[conversationIdFor(authUser.uid, selectedUser.uid)] : null;
+
+  const selectedPartnerTyping =
+    selectedConversation && selectedUser ? selectedConversation?.typing?.[selectedUser.uid] : false;
 
   const submitAuth = async (event) => {
     event.preventDefault();
@@ -149,14 +206,46 @@ function App() {
 
     try {
       if (authMode === "register") {
+        const normalizedPhone = normalizePhone(authForm.phoneNumber);
+        if (!normalizedPhone) {
+          throw new Error("A valid phone number is required.");
+        }
+
+        const existingPhoneQuery = query(collection(db, "users"), where("phoneNumber", "==", normalizedPhone));
+
+        let phoneAlreadyTaken = false;
+        await new Promise((resolve) => {
+          const unsubscribe = onSnapshot(existingPhoneQuery, (snapshot) => {
+            phoneAlreadyTaken = !snapshot.empty;
+            unsubscribe();
+            resolve();
+          });
+        });
+
+        if (phoneAlreadyTaken) {
+          throw new Error("This phone number is already linked to another account.");
+        }
+
         const credentials = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
         await updateProfile(credentials.user, {
           displayName: authForm.displayName.trim(),
         });
+
+        await setDoc(doc(db, "users", credentials.user.uid), {
+          uid: credentials.user.uid,
+          displayName: authForm.displayName.trim(),
+          email: authForm.email.trim(),
+          phoneNumber: normalizedPhone,
+          contacts: [],
+          isOnline: true,
+          lastSeen: serverTimestamp(),
+          createdAt: serverTimestamp(),
+        });
       } else {
         await signInWithEmailAndPassword(auth, authForm.email, authForm.password);
       }
-      setAuthForm({ displayName: "", email: "", password: "" });
+
+      setAuthForm({ displayName: "", phoneNumber: "", email: "", password: "" });
     } catch (error) {
       setAuthError(error.message || "Unable to complete request.");
     } finally {
@@ -164,42 +253,148 @@ function App() {
     }
   };
 
-  const sendMessage = async () => {
-    if (!messageInput.trim() || !authUser || !selectedUser) return;
+  const addContactByPhone = async (event) => {
+    event.preventDefault();
+    if (!authUser || !contactPhone.trim()) return;
+
+    const normalizedPhone = normalizePhone(contactPhone);
+    const phoneQuery = query(collection(db, "users"), where("phoneNumber", "==", normalizedPhone));
+
+    await new Promise((resolve) => {
+      const unsubscribe = onSnapshot(phoneQuery, async (snapshot) => {
+        if (snapshot.empty) {
+          setContactFeedback("No registered user found with that number.");
+          unsubscribe();
+          resolve();
+          return;
+        }
+
+        const candidate = snapshot.docs[0].data();
+        if (candidate.uid === authUser.uid) {
+          setContactFeedback("You cannot add your own number.");
+          unsubscribe();
+          resolve();
+          return;
+        }
+
+        await updateDoc(doc(db, "users", authUser.uid), {
+          contacts: arrayUnion(normalizedPhone),
+        });
+
+        setContactFeedback(`Saved ${candidate.displayName} to your contacts.`);
+        setContactPhone("");
+        unsubscribe();
+        resolve();
+      });
+    });
+  };
+
+  const updateTypingState = async (isTyping) => {
+    if (!authUser || !selectedUser) return;
 
     const conversationId = conversationIdFor(authUser.uid, selectedUser.uid);
     const conversationRef = doc(db, "conversations", conversationId);
-    const text = messageInput.trim();
 
     await setDoc(
       conversationRef,
       {
         participants: [authUser.uid, selectedUser.uid],
-        participantMeta: {
-          [authUser.uid]: {
-            displayName: authUser.displayName || authUser.email,
-            email: authUser.email,
-          },
-          [selectedUser.uid]: {
-            displayName: selectedUser.displayName,
-            email: selectedUser.email,
-          },
+        participantPhones: [profile?.phoneNumber || "", selectedUser.phoneNumber || ""],
+        typing: {
+          [authUser.uid]: isTyping,
         },
-        lastMessage: text,
+      },
+      { merge: true }
+    );
+  };
+
+  const queueTypingStop = () => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      updateTypingState(false);
+    }, 1000);
+  };
+
+  const sendMessage = async ({ text = "", file = null } = {}) => {
+    if ((!text.trim() && !file) || !authUser || !selectedUser || !profile) return;
+
+    const conversationId = conversationIdFor(authUser.uid, selectedUser.uid);
+    const conversationRef = doc(db, "conversations", conversationId);
+
+    let payload = {
+      type: "text",
+      text: text.trim(),
+    };
+
+    if (file) {
+      setSendingAttachment(true);
+      const storageRef = ref(storage, `attachments/${conversationId}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const fileURL = await getDownloadURL(storageRef);
+      payload = {
+        type: file.type.startsWith("image/") ? "image" : "file",
+        text: text.trim() || file.name,
+        fileURL,
+        fileName: file.name,
+        fileSize: file.size,
+      };
+      setSendingAttachment(false);
+    }
+
+    await setDoc(
+      conversationRef,
+      {
+        participants: [authUser.uid, selectedUser.uid],
+        participantPhones: [profile.phoneNumber || "", selectedUser.phoneNumber || ""],
+        lastMessage: payload.type === "text" ? payload.text : `📎 ${payload.fileName}`,
+        lastMessageType: payload.type,
         lastMessageSender: authUser.uid,
         lastMessageAt: serverTimestamp(),
+        typing: { [authUser.uid]: false },
+        unreadBy: {
+          [authUser.uid]: 0,
+          [selectedUser.uid]: increment(1),
+        },
       },
       { merge: true }
     );
 
     await addDoc(collection(db, "conversations", conversationId, "messages"), {
-      text,
+      ...payload,
       senderId: authUser.uid,
       receiverId: selectedUser.uid,
       createdAt: serverTimestamp(),
+      readBy: [authUser.uid],
     });
 
     setMessageInput("");
+    updateTypingState(false);
+  };
+
+  const onMessageChange = async (value) => {
+    setMessageInput(value);
+
+    if (!value.trim()) {
+      updateTypingState(false);
+      return;
+    }
+
+    await updateTypingState(true);
+    queueTypingStop();
+  };
+
+  const logout = async () => {
+    if (authUser) {
+      await updateDoc(doc(db, "users", authUser.uid), {
+        isOnline: false,
+        lastSeen: serverTimestamp(),
+      });
+    }
+
+    await signOut(auth);
   };
 
   if (!authUser) {
@@ -207,7 +402,7 @@ function App() {
       <div className="auth-shell">
         <div className="auth-card">
           <h1>MyChatApp</h1>
-          <p>Secure real-time messaging inspired by WhatsApp.</p>
+          <p>WhatsApp-style secure chat with contacts-by-phone, presence, and file sharing.</p>
 
           <div className="auth-tabs">
             <button
@@ -228,19 +423,33 @@ function App() {
 
           <form className="auth-form" onSubmit={submitAuth}>
             {authMode === "register" && (
-              <input
-                type="text"
-                placeholder="Full name"
-                value={authForm.displayName}
-                onChange={(event) =>
-                  setAuthForm((prev) => ({
-                    ...prev,
-                    displayName: event.target.value,
-                  }))
-                }
-                required
-                minLength={2}
-              />
+              <>
+                <input
+                  type="text"
+                  placeholder="Full name"
+                  value={authForm.displayName}
+                  onChange={(event) =>
+                    setAuthForm((prev) => ({
+                      ...prev,
+                      displayName: event.target.value,
+                    }))
+                  }
+                  required
+                  minLength={2}
+                />
+                <input
+                  type="tel"
+                  placeholder="Phone number (with country code)"
+                  value={authForm.phoneNumber}
+                  onChange={(event) =>
+                    setAuthForm((prev) => ({
+                      ...prev,
+                      phoneNumber: event.target.value,
+                    }))
+                  }
+                  required
+                />
+              </>
             )}
             <input
               type="email"
@@ -289,19 +498,30 @@ function App() {
         <div className="sidebar-header">
           <div>
             <h2>Chats</h2>
-            <span>{authUser.displayName || authUser.email}</span>
+            <span>{profile?.phoneNumber || authUser.email}</span>
           </div>
-          <button type="button" onClick={() => signOut(auth)}>
+          <button type="button" onClick={logout}>
             Logout
           </button>
         </div>
+
+        <form className="add-contact-form" onSubmit={addContactByPhone}>
+          <input
+            type="tel"
+            placeholder="Add contact by phone"
+            value={contactPhone}
+            onChange={(event) => setContactPhone(event.target.value)}
+          />
+          <button type="submit">Add</button>
+        </form>
+        {contactFeedback && <p className="feedback">{contactFeedback}</p>}
 
         <div className="search-box">
           <input
             type="text"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search people"
+            placeholder="Search contacts"
           />
         </div>
 
@@ -309,6 +529,7 @@ function App() {
           {filteredUsers.map((user) => {
             const conversationId = conversationIdFor(authUser.uid, user.uid);
             const conversation = conversations[conversationId];
+            const unreadCount = conversation?.unreadBy?.[authUser.uid] || 0;
             const isActive = selectedUser?.uid === user.uid;
 
             return (
@@ -324,7 +545,10 @@ function App() {
                     <strong>{user.displayName || "Unnamed user"}</strong>
                     <span>{formatTime(conversation?.lastMessageAt)}</span>
                   </div>
-                  <p>{conversation?.lastMessage || user.email}</p>
+                  <div className="tile-sub-row">
+                    <p>{conversation?.lastMessage || user.phoneNumber || user.email}</p>
+                    {unreadCount > 0 && <b className="unread-pill">{unreadCount}</b>}
+                  </div>
                 </div>
               </button>
             );
@@ -336,7 +560,7 @@ function App() {
         {!selectedUser ? (
           <div className="empty-state">
             <h3>Welcome to MyChatApp</h3>
-            <p>Select a contact from the left to start real-time messaging.</p>
+            <p>Add a phone contact and select them to start real-time messaging.</p>
           </div>
         ) : (
           <>
@@ -344,7 +568,11 @@ function App() {
               <div className="avatar">{(selectedUser.displayName || "U").charAt(0).toUpperCase()}</div>
               <div>
                 <h3>{selectedUser.displayName}</h3>
-                <span>{selectedUser.email}</span>
+                <span>
+                  {selectedUser.isOnline
+                    ? "online"
+                    : `last seen ${formatTime(selectedUser.lastSeen) || "recently"}`}
+                </span>
               </div>
             </header>
 
@@ -354,7 +582,17 @@ function App() {
                 return (
                   <div key={message.id} className={`message-row ${isMine ? "mine" : "theirs"}`}>
                     <div className="message-bubble">
-                      <p>{message.text}</p>
+                      {message.type === "image" && message.fileURL && (
+                        <img src={message.fileURL} alt={message.fileName || "attachment"} className="chat-image" />
+                      )}
+
+                      {message.type === "file" && message.fileURL && (
+                        <a href={message.fileURL} target="_blank" rel="noreferrer" className="file-link">
+                          {message.fileName || "Open file"}
+                        </a>
+                      )}
+
+                      {!!message.text && <p>{message.text}</p>}
                       <span>{formatTime(message.createdAt)}</span>
                     </div>
                   </div>
@@ -362,21 +600,37 @@ function App() {
               })}
             </section>
 
+            <div className="typing-row">{selectedPartnerTyping ? `${selectedUser.displayName} is typing...` : ""}</div>
+
             <footer className="composer">
+              <label htmlFor="attachment" className="attach-btn">
+                📎
+              </label>
+              <input
+                id="attachment"
+                type="file"
+                hidden
+                onChange={(event) => {
+                  if (event.target.files?.[0]) {
+                    sendMessage({ file: event.target.files[0] });
+                    event.target.value = "";
+                  }
+                }}
+              />
               <input
                 type="text"
                 value={messageInput}
-                onChange={(event) => setMessageInput(event.target.value)}
+                onChange={(event) => onMessageChange(event.target.value)}
                 placeholder="Type a message"
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
-                    sendMessage();
+                    sendMessage({ text: messageInput });
                   }
                 }}
               />
-              <button type="button" onClick={sendMessage}>
-                Send
+              <button type="button" onClick={() => sendMessage({ text: messageInput })}>
+                {sendingAttachment ? "Uploading..." : "Send"}
               </button>
             </footer>
           </>
