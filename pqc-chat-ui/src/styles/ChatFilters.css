@@ -1,0 +1,27 @@
+.chat-filters {
+  display: flex;
+  padding: 5px 15px 10px;
+  gap: 8px;
+  background-color: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.filter-btn {
+  padding: 5px 12px;
+  border-radius: 15px;
+  border: none;
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.filter-btn:hover {
+  background-color: var(--bg-tertiary);
+}
+
+.filter-btn.active {
+  background-color: var(--accent-color);
+  color: white;
+}

@@ -1,0 +1,29 @@
+.archive-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 15px;
+  background-color: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.archive-header:hover {
+  background-color: var(--bg-hover);
+}
+
+.archive-icon {
+  font-size: 1.2rem;
+  margin-right: 15px;
+  color: var(--text-muted);
+}
+
+.archive-text {
+  flex: 1;
+  font-size: 0.95rem;
+}
+
+.archive-count {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
