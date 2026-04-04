@@ -25,6 +25,8 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { auth, db, storage } from "./firebase";
 import "./App.css";
 
+const QUICK_EMOJIS = ["😀", "😂", "😍", "🙏", "👍", "🔥", "🎉", "❤️"];
+
 const normalizePhone = (raw) => raw.replace(/\D/g, "");
 const buildPhoneVariants = (raw) => {
   const digits = normalizePhone(raw);
@@ -74,6 +76,10 @@ function App() {
   const [contactPhone, setContactPhone] = useState("");
   const [contactFeedback, setContactFeedback] = useState("");
   const [sendingAttachment, setSendingAttachment] = useState(false);
+  const [updatingProfile, setUpdatingProfile] = useState(false);
+  const [showProfilePanel, setShowProfilePanel] = useState(false);
+  const [profileNameInput, setProfileNameInput] = useState("");
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const typingTimeoutRef = useRef(null);
 
@@ -90,6 +96,7 @@ function App() {
         setProfile(null);
         setSelectedUser(null);
         setMessages([]);
+        setShowProfilePanel(false);
         return;
       }
 
@@ -194,6 +201,10 @@ function App() {
 
     return unsubscribe;
   }, [authUser, selectedUser]);
+
+  useEffect(() => {
+    setProfileNameInput(profile?.displayName || "");
+  }, [profile?.displayName]);
 
   const contacts = useMemo(() => {
     const visibleUsers = new Map();
@@ -337,6 +348,39 @@ function App() {
     setContactPhone("");
   };
 
+  const updateProfileName = async (event) => {
+    event.preventDefault();
+    if (!authUser) return;
+
+    const nextName = profileNameInput.trim();
+    if (!nextName) return;
+
+    setUpdatingProfile(true);
+    try {
+      await updateProfile(authUser, { displayName: nextName });
+      await updateDoc(doc(db, "users", authUser.uid), { displayName: nextName });
+      setShowProfilePanel(false);
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
+
+  const updateProfilePicture = async (file) => {
+    if (!authUser || !file) return;
+
+    setUpdatingProfile(true);
+    try {
+      const storageRef = ref(storage, `avatars/${authUser.uid}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const photoURL = await getDownloadURL(storageRef);
+
+      await updateProfile(authUser, { photoURL });
+      await updateDoc(doc(db, "users", authUser.uid), { photoURL });
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
+
   const updateTypingState = async (isTyping) => {
     if (!authUser || !selectedUser) return;
 
@@ -432,6 +476,11 @@ function App() {
 
     await updateTypingState(true);
     queueTypingStop();
+  };
+
+  const addEmojiToMessage = (emoji) => {
+    const next = `${messageInput}${emoji}`;
+    onMessageChange(next);
   };
 
   const logout = async () => {
@@ -559,10 +608,53 @@ function App() {
             <h2>Chats</h2>
             <span>{profile?.phoneNumber || authUser.email}</span>
           </div>
-          <button type="button" onClick={logout}>
-            Logout
-          </button>
+          <div className="sidebar-actions">
+            <button type="button" onClick={() => setShowProfilePanel((prev) => !prev)}>
+              Profile
+            </button>
+            <button type="button" onClick={logout}>
+              Logout
+            </button>
+          </div>
         </div>
+
+        {showProfilePanel && (
+          <form className="profile-panel" onSubmit={updateProfileName}>
+            <div className="profile-avatar-row">
+              <img
+                className="profile-avatar-preview"
+                src={profile?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.displayName || "User")}&background=128C7E&color=fff`}
+                alt={profile?.displayName || "profile"}
+              />
+              <label htmlFor="profile-photo" className="profile-upload-btn">
+                Change photo
+              </label>
+              <input
+                id="profile-photo"
+                type="file"
+                hidden
+                accept="image/*"
+                onChange={(event) => {
+                  if (event.target.files?.[0]) {
+                    updateProfilePicture(event.target.files[0]);
+                    event.target.value = "";
+                  }
+                }}
+              />
+            </div>
+            <input
+              type="text"
+              value={profileNameInput}
+              placeholder="Update your name"
+              onChange={(event) => setProfileNameInput(event.target.value)}
+              minLength={2}
+              required
+            />
+            <button type="submit" disabled={updatingProfile}>
+              {updatingProfile ? "Saving..." : "Save profile"}
+            </button>
+          </form>
+        )}
 
         <form className="add-contact-form" onSubmit={addContactByPhone}>
           <input
@@ -638,6 +730,14 @@ function App() {
                     : `last seen ${formatTime(selectedUser.lastSeen) || "recently"}`}
                 </span>
               </div>
+              <div className="chat-header-actions">
+                <button type="button" aria-label="Search in chat">
+                  🔍
+                </button>
+                <button type="button" aria-label="Open chat menu">
+                  ⋮
+                </button>
+              </div>
             </header>
 
             <section className="messages">
@@ -667,6 +767,18 @@ function App() {
             <div className="typing-row">{selectedPartnerTyping ? `${selectedUser.displayName} is typing...` : ""}</div>
 
             <footer className="composer">
+              <button type="button" className="attach-btn" onClick={() => setShowEmojiPicker((prev) => !prev)}>
+                😊
+              </button>
+              {showEmojiPicker && (
+                <div className="emoji-picker">
+                  {QUICK_EMOJIS.map((emoji) => (
+                    <button key={emoji} type="button" onClick={() => addEmojiToMessage(emoji)}>
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
               <label htmlFor="attachment" className="attach-btn">
                 📎
               </label>
@@ -674,6 +786,7 @@ function App() {
                 id="attachment"
                 type="file"
                 hidden
+                accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip"
                 onChange={(event) => {
                   if (event.target.files?.[0]) {
                     sendMessage({ file: event.target.files[0] });
@@ -700,6 +813,12 @@ function App() {
           </>
         )}
       </main>
+      {(sendingAttachment || updatingProfile || authLoading) && (
+        <div className="global-loader">
+          <div className="loader-spinner" />
+          <p>Please wait...</p>
+        </div>
+      )}
     </div>
   );
 }

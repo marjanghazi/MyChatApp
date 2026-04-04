@@ -150,6 +150,42 @@ html,
   padding: 8px 12px;
 }
 
+.sidebar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.profile-panel {
+  margin: 10px 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+  background: #19262d;
+}
+
+.profile-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-avatar-preview {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.profile-upload-btn {
+  background: #2a3942;
+  padding: 7px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
 .add-contact-form {
   padding: 12px;
   display: grid;
@@ -259,6 +295,22 @@ html,
   background: var(--panel);
 }
 
+.chat-header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.chat-header-actions button {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 0;
+  color: #d9e0e4;
+  background: #2a3942;
+  cursor: pointer;
+}
+
 .chat-header h3 {
   margin: 0;
 }
@@ -335,6 +387,7 @@ html,
 }
 
 .composer {
+  position: relative;
   display: flex;
   gap: 10px;
   padding: 14px;
@@ -355,6 +408,57 @@ html,
 
 .composer input {
   flex: 1;
+}
+
+.emoji-picker {
+  position: absolute;
+  bottom: 66px;
+  left: 14px;
+  background: #16252d;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.emoji-picker button {
+  background: #25363e;
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.global-loader {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 20, 26, 0.65);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+}
+
+.global-loader p {
+  margin-top: 10px;
+  font-weight: 600;
+}
+
+.loader-spinner {
+  width: 44px;
+  height: 44px;
+  border: 4px solid #c7d7de;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 900px) {
