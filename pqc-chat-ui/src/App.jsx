@@ -10,6 +10,7 @@ import {
   addDoc,
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   increment,
@@ -22,9 +23,16 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import {
+  deleteObject,
+  getDownloadURL,
+  ref,
+  uploadBytesResumable,
+} from "firebase/storage";
 import { auth, db, storage } from "./firebase";
 import "./App.css";
+
+const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
 
 const QUICK_EMOJIS = ["😀", "😂", "😍", "🙏", "👍", "🔥", "🎉", "❤️"];
 const THEMES = [
@@ -52,6 +60,11 @@ const formatTime = (dateValue) => {
 const conversationIdFor = (uidA, uidB) => [uidA, uidB].sort().join("_");
 
 function App() {
+  const [appTheme, setAppTheme] = useState(() => {
+    const savedTheme = localStorage.getItem("appTheme");
+    if (savedTheme === "light" || savedTheme === "dark") return savedTheme;
+    return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
+  });
   const [authUser, setAuthUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [profile, setProfile] = useState(null);
@@ -75,8 +88,19 @@ function App() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [forwardOpenFor, setForwardOpenFor] = useState(null);
   const [statusText, setStatusText] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [localCallStream, setLocalCallStream] = useState(null);
+  const [remoteCallStream, setRemoteCallStream] = useState(null);
+  const [incomingOffer, setIncomingOffer] = useState(null);
 
   const typingTimeoutRef = useRef(null);
+  const peerConnectionRef = useRef(null);
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem("appTheme", appTheme);
+  }, [appTheme]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -157,12 +181,27 @@ function App() {
     setDoc(conversationRef, { unreadBy: { [authUser.uid]: 0 } }, { merge: true });
 
     const q = query(collection(db, "conversations", conversationId, "messages"), orderBy("createdAt", "asc"));
-    return onSnapshot(q, (snapshot) => setMessages(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }))));
+    return onSnapshot(q, (snapshot) => {
+      const nextMessages = snapshot.docs
+        .map((entry) => ({ id: entry.id, ...entry.data() }))
+        .filter((entry) => !(entry.deletedFor || []).includes(authUser.uid));
+      setMessages(nextMessages);
+    });
   }, [authUser, selectedUser]);
 
   useEffect(() => {
     setProfileNameInput(profile?.displayName || "");
   }, [profile?.displayName]);
+
+  useEffect(() => {
+    if (localVideoRef.current) localVideoRef.current.srcObject = localCallStream || null;
+  }, [localCallStream]);
+
+  useEffect(() => {
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteCallStream || null;
+  }, [remoteCallStream]);
+
+  useEffect(() => () => stopCallMedia(), [localCallStream, remoteCallStream]);
 
   const contacts = useMemo(() => {
     const visibleUsers = new Map();
@@ -203,6 +242,46 @@ function App() {
   const selectedPartnerTyping = selectedConversation?.typing?.[selectedUser?.uid] || false;
   const selectedMuted = selectedConversation?.mutedBy?.[authUser?.uid] || false;
   const selectedCall = selectedConversation?.callState || null;
+  const selectedConversationId = authUser && selectedUser ? conversationIdFor(authUser.uid, selectedUser.uid) : "";
+
+  const stopCallMedia = () => {
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    if (localCallStream) localCallStream.getTracks().forEach((track) => track.stop());
+    if (remoteCallStream) remoteCallStream.getTracks().forEach((track) => track.stop());
+    setLocalCallStream(null);
+    setRemoteCallStream(null);
+    setIncomingOffer(null);
+  };
+
+  useEffect(() => {
+    if (!authUser || !selectedConversationId) return undefined;
+    const signalsRef = query(collection(db, "conversations", selectedConversationId, "signals"), where("to", "==", authUser.uid));
+
+    return onSnapshot(signalsRef, async (snapshot) => {
+      for (const change of snapshot.docChanges()) {
+        if (change.type !== "added") continue;
+        const signal = change.doc.data();
+        try {
+          if (signal.type === "offer") {
+            setIncomingOffer(signal.sdp);
+          } else if (signal.type === "answer" && peerConnectionRef.current) {
+            await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            if (selectedCall) await setCallState({ ...selectedCall, status: "active" });
+          } else if (signal.type === "ice" && peerConnectionRef.current) {
+            await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          } else if (signal.type === "hangup") {
+            stopCallMedia();
+            if (selectedCall) await setCallState({ ...selectedCall, status: "ended", endedAt: serverTimestamp() });
+          }
+        } finally {
+          await deleteDoc(change.doc.ref);
+        }
+      }
+    });
+  }, [authUser, selectedConversationId, selectedCall]);
 
   const submitAuth = async (event) => {
     event.preventDefault();
@@ -286,9 +365,37 @@ function App() {
   };
 
   const uploadToStorage = async (path, file) => {
+    if (!file) throw new Error("File missing.");
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      throw new Error("File is too large. Please upload a file up to 15MB.");
+    }
+
     const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
-    await uploadBytes(storageRef, file);
-    return getDownloadURL(storageRef);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    return new Promise((resolve, reject) => {
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => {
+          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+          setUploadProgress(progress);
+        },
+        async (error) => {
+          try {
+            await deleteObject(storageRef);
+          } catch {
+            // noop
+          }
+          setUploadProgress(0);
+          reject(error);
+        },
+        async () => {
+          const fileUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          setUploadProgress(0);
+          resolve(fileUrl);
+        }
+      );
+    });
   };
 
   const updateProfileName = async (event) => {
@@ -370,12 +477,12 @@ function App() {
           fileName: file.name,
           fileSize: file.size,
         };
-      } catch {
-        setStatusText("Attachment upload failed.");
-        setSendingAttachment(false);
+      } catch (error) {
+        setStatusText(error?.message || "Attachment upload failed.");
         return;
+      } finally {
+        setSendingAttachment(false);
       }
-      setSendingAttachment(false);
     }
 
     if (forwardedFrom) payload.forwardedFrom = forwardedFrom;
@@ -451,23 +558,23 @@ function App() {
 
   const deleteChatHistory = async () => {
     if (!authUser || !selectedUser) return;
-    const confirmed = window.confirm("Delete chat history for this conversation?");
+    const confirmed = window.confirm("Delete chat history only for your account?");
     if (!confirmed) return;
 
     const conversationId = conversationIdFor(authUser.uid, selectedUser.uid);
     const messagesRef = collection(db, "conversations", conversationId, "messages");
     const snapshot = await getDocs(messagesRef);
     const batch = writeBatch(db);
-    snapshot.docs.forEach((entry) => batch.delete(entry.ref));
-    await batch.commit();
+    snapshot.docs.forEach((entry) => batch.update(entry.ref, { deletedFor: arrayUnion(authUser.uid) }));
+    if (!snapshot.empty) await batch.commit();
 
     await setDoc(doc(db, "conversations", conversationId), {
-      lastMessage: "",
-      lastMessageAt: serverTimestamp(),
+      clearedAtBy: { [authUser.uid]: serverTimestamp() },
       unreadBy: { [authUser.uid]: 0 },
     }, { merge: true });
 
-    setStatusText("Chat history deleted.");
+    setMessages([]);
+    setStatusText("Chat hidden on your side.");
   };
 
   const setCallState = async (nextCallState) => {
@@ -479,24 +586,84 @@ function App() {
     );
   };
 
-  const startCall = async (type) => {
-    await setCallState({
+  const sendCallSignal = async (payload) => {
+    if (!authUser || !selectedUser) return;
+    await addDoc(collection(db, "conversations", conversationIdFor(authUser.uid, selectedUser.uid), "signals"), {
+      ...payload,
       from: authUser.uid,
       to: selectedUser.uid,
-      type,
-      status: "ringing",
-      startedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
     });
   };
 
+  const buildPeerConnection = (stream) => {
+    const peerConnection = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+
+    stream.getTracks().forEach((track) => peerConnection.addTrack(track, stream));
+    peerConnection.ontrack = (event) => {
+      if (event.streams?.[0]) setRemoteCallStream(event.streams[0]);
+    };
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendCallSignal({ type: "ice", candidate: event.candidate.toJSON() });
+      }
+    };
+
+    peerConnectionRef.current = peerConnection;
+    return peerConnection;
+  };
+
+  const startCall = async (type) => {
+    if (!authUser || !selectedUser) return;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setStatusText("Your browser does not support calling.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: type === "video" });
+      setLocalCallStream(stream);
+      const peerConnection = buildPeerConnection(stream);
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      await sendCallSignal({ type: "offer", sdp: offer });
+      await setCallState({
+        from: authUser.uid,
+        to: selectedUser.uid,
+        type,
+        status: "ringing",
+        startedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      setStatusText(error?.message || "Unable to start call.");
+    }
+  };
+
   const acceptCall = async () => {
-    if (!selectedCall) return;
-    await setCallState({ ...selectedCall, status: "active" });
+    if (!selectedCall || !incomingOffer) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: selectedCall.type === "video",
+      });
+      setLocalCallStream(stream);
+      const peerConnection = buildPeerConnection(stream);
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOffer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      await sendCallSignal({ type: "answer", sdp: answer });
+      await setCallState({ ...selectedCall, status: "active" });
+    } catch (error) {
+      setStatusText(error?.message || "Unable to accept call.");
+    }
   };
 
   const endCall = async () => {
     if (!selectedCall) return;
+    await sendCallSignal({ type: "hangup" });
     await setCallState({ ...selectedCall, status: "ended", endedAt: serverTimestamp() });
+    stopCallMedia();
   };
 
   const logout = async () => {
@@ -508,10 +675,13 @@ function App() {
 
   if (!authReady) {
     return (
-      <div className="auth-shell">
+      <div className={`auth-shell app-theme-${appTheme}`}>
         <div className="auth-card">
           <h1>QUANTX</h1>
           <p>Checking your secure workspace...</p>
+          <button type="button" className="theme-switch-btn" onClick={() => setAppTheme((prev) => (prev === "dark" ? "light" : "dark"))}>
+            {appTheme === "dark" ? "🌞 Light mode" : "🌙 Dark mode"}
+          </button>
         </div>
       </div>
     );
@@ -519,10 +689,14 @@ function App() {
 
   if (!authUser) {
     return (
-      <div className="auth-shell">
+      <div className={`auth-shell app-theme-${appTheme}`}>
         <div className="auth-card">
           <h1>QUANTX</h1>
           <p>Enterprise-grade messaging with modern collaboration controls.</p>
+
+          <button type="button" className="theme-switch-btn" onClick={() => setAppTheme((prev) => (prev === "dark" ? "light" : "dark"))}>
+            {appTheme === "dark" ? "🌞 Light mode" : "🌙 Dark mode"}
+          </button>
 
           <div className="auth-tabs">
             <button type="button" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>
@@ -583,7 +757,7 @@ function App() {
   }
 
   return (
-    <div className={`chat-shell theme-${selectedTheme}`}>
+    <div className={`chat-shell theme-${selectedTheme} app-theme-${appTheme}`}>
       <aside className="chat-sidebar">
         <div className="sidebar-header">
           <div className="brand-block">
@@ -594,6 +768,9 @@ function App() {
             </div>
           </div>
           <div className="sidebar-actions">
+            <button type="button" onClick={() => setAppTheme((prev) => (prev === "dark" ? "light" : "dark"))}>
+              {appTheme === "dark" ? "🌞" : "🌙"}
+            </button>
             <button type="button" onClick={() => setShowProfilePanel((prev) => !prev)}>Profile</button>
             <button type="button" onClick={logout}>Logout</button>
           </div>
@@ -634,6 +811,7 @@ function App() {
         </form>
         {contactFeedback && <p className="feedback">{contactFeedback}</p>}
         {statusText && <p className="feedback">{statusText}</p>}
+        {sendingAttachment && <p className="feedback">Uploading file... {uploadProgress}%</p>}
 
         <div className="search-box">
           <input type="text" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search contacts" />
@@ -688,6 +866,12 @@ function App() {
                 <span>{selectedCall.type === "video" ? "Video" : "Audio"} call: {selectedCall.status}</span>
                 {selectedCall.to === authUser.uid && selectedCall.status === "ringing" && <button type="button" onClick={acceptCall}>Accept</button>}
                 <button type="button" onClick={endCall}>End</button>
+              </div>
+            )}
+            {(localCallStream || remoteCallStream) && (
+              <div className="call-media-panel">
+                <video ref={localVideoRef} autoPlay muted playsInline className="call-video" />
+                <video ref={remoteVideoRef} autoPlay playsInline className="call-video" />
               </div>
             )}
 
