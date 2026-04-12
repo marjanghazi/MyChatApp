@@ -31,15 +31,17 @@ import {
 } from "firebase/storage";
 import { auth, db, storage } from "./firebase";
 import "./App.css";
+import PublicHomePage from "./pages/PublicHomePage";
+import AuthPage from "./pages/AuthPage";
 
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
-
-const QUICK_EMOJIS = ["😀", "😂", "😍", "🙏", "👍", "🔥", "🎉", "❤️"];
+const QUICK_EMOJIS = ["😀", "😂", "😍", "🙏", "👍", "🔥", "🎉", "❤️", "💯", "⚡", "🛡️", "🔐"];
 const THEMES = [
-  { id: "default", label: "Default" },
-  { id: "emerald", label: "Emerald" },
-  { id: "midnight", label: "Midnight" },
-  { id: "sunset", label: "Sunset" },
+  { id: "default", label: "⚡ Quantum" },
+  { id: "emerald", label: "🌿 Emerald" },
+  { id: "midnight", label: "🌌 Midnight" },
+  { id: "sunset", label: "🌅 Sunset" },
+  { id: "cyber", label: "🔷 Cyber" },
 ];
 
 const normalizePhone = (raw) => raw.replace(/\D/g, "");
@@ -57,6 +59,16 @@ const formatTime = (dateValue) => {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
+const formatDate = (dateValue) => {
+  if (!dateValue) return "";
+  const date = typeof dateValue?.toDate === "function" ? dateValue.toDate() : new Date(dateValue);
+  const now = new Date();
+  const diff = now - date;
+  if (diff < 86400000) return "Today";
+  if (diff < 172800000) return "Yesterday";
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+};
+
 const conversationIdFor = (uidA, uidB) => [uidA, uidB].sort().join("_");
 
 function App() {
@@ -69,6 +81,7 @@ function App() {
   const [authReady, setAuthReady] = useState(false);
   const [profile, setProfile] = useState(null);
   const [authMode, setAuthMode] = useState("login");
+  const [publicView, setPublicView] = useState("home");
   const [authForm, setAuthForm] = useState({ displayName: "", phoneNumber: "", email: "", password: "" });
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -92,15 +105,24 @@ function App() {
   const [localCallStream, setLocalCallStream] = useState(null);
   const [remoteCallStream, setRemoteCallStream] = useState(null);
   const [incomingOffer, setIncomingOffer] = useState(null);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [replyTo, setReplyTo] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
 
   const typingTimeoutRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const messagesEndRef = useRef(null);
+  const composerRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem("appTheme", appTheme);
   }, [appTheme]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -113,7 +135,6 @@ function App() {
         setMessages([]);
         return;
       }
-
       try {
         await setDoc(
           doc(db, "users", user.uid),
@@ -131,24 +152,33 @@ function App() {
         setAuthError("Unable to sync profile. Check network and try again.");
       }
     });
-
     return unsubscribe;
   }, []);
 
   useEffect(() => {
     if (!authUser) return undefined;
     const userRef = doc(db, "users", authUser.uid);
+    let heartbeatTimer = null;
+
+    const updatePresence = async (isOnline) => {
+      await setDoc(userRef, { isOnline, lastSeen: serverTimestamp(), activeAt: serverTimestamp() }, { merge: true });
+    };
 
     const unsubscribe = onSnapshot(userRef, (snapshot) => {
       setProfile(snapshot.exists() ? snapshot.data() : null);
     });
 
-    const markOffline = async () => {
-      await setDoc(userRef, { isOnline: false, lastSeen: serverTimestamp() }, { merge: true });
-    };
+    const markOffline = async () => { await updatePresence(false); };
+    const handleVisibility = () => updatePresence(!document.hidden);
 
+    updatePresence(true);
+    heartbeatTimer = window.setInterval(() => updatePresence(!document.hidden), 60000);
+    document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("beforeunload", markOffline);
+
     return () => {
+      if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+      document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("beforeunload", markOffline);
       markOffline();
       unsubscribe();
@@ -158,7 +188,7 @@ function App() {
   useEffect(() => {
     if (!authUser) return undefined;
     const q = query(collection(db, "users"), where("uid", "!=", authUser.uid));
-    return onSnapshot(q, (snapshot) => setAllUsers(snapshot.docs.map((entry) => entry.data())));
+    return onSnapshot(q, (snapshot) => setAllUsers(snapshot.docs.map((e) => e.data())));
   }, [authUser]);
 
   useEffect(() => {
@@ -166,16 +196,13 @@ function App() {
     const q = query(collection(db, "conversations"), where("participants", "array-contains", authUser.uid));
     return onSnapshot(q, (snapshot) => {
       const next = {};
-      snapshot.forEach((entry) => {
-        next[entry.id] = entry.data();
-      });
+      snapshot.forEach((e) => { next[e.id] = e.data(); });
       setConversations(next);
     });
   }, [authUser]);
 
   useEffect(() => {
     if (!authUser || !selectedUser) return undefined;
-
     const conversationId = conversationIdFor(authUser.uid, selectedUser.uid);
     const conversationRef = doc(db, "conversations", conversationId);
     setDoc(conversationRef, { unreadBy: { [authUser.uid]: 0 } }, { merge: true });
@@ -183,74 +210,71 @@ function App() {
     const q = query(collection(db, "conversations", conversationId, "messages"), orderBy("createdAt", "asc"));
     return onSnapshot(q, (snapshot) => {
       const nextMessages = snapshot.docs
-        .map((entry) => ({ id: entry.id, ...entry.data() }))
-        .filter((entry) => !(entry.deletedFor || []).includes(authUser.uid));
+        .map((e) => ({ id: e.id, ...e.data() }))
+        .filter((e) => !(e.deletedFor || []).includes(authUser.uid));
       setMessages(nextMessages);
+      const unreadIncoming = snapshot.docs.filter((e) => {
+        const data = e.data();
+        return data.receiverId === authUser.uid && !(data.readBy || []).includes(authUser.uid);
+      });
+      unreadIncoming.forEach((e) => {
+        updateDoc(e.ref, { readBy: arrayUnion(authUser.uid), readAt: serverTimestamp() });
+      });
+      if (unreadIncoming.length) {
+        setDoc(conversationRef, { unreadBy: { [authUser.uid]: 0 } }, { merge: true });
+      }
     });
   }, [authUser, selectedUser]);
 
-  useEffect(() => {
-    setProfileNameInput(profile?.displayName || "");
-  }, [profile?.displayName]);
-
-  useEffect(() => {
-    if (localVideoRef.current) localVideoRef.current.srcObject = localCallStream || null;
-  }, [localCallStream]);
-
-  useEffect(() => {
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteCallStream || null;
-  }, [remoteCallStream]);
-
+  useEffect(() => { setProfileNameInput(profile?.displayName || ""); }, [profile?.displayName]);
+  useEffect(() => { if (localVideoRef.current) localVideoRef.current.srcObject = localCallStream || null; }, [localCallStream]);
+  useEffect(() => { if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteCallStream || null; }, [remoteCallStream]);
   useEffect(() => () => stopCallMedia(), [localCallStream, remoteCallStream]);
 
   const contacts = useMemo(() => {
     const visibleUsers = new Map();
     const contactSet = new Set((profile?.contacts || []).map(normalizePhone));
-    const usersById = new Map(allUsers.map((user) => [user.uid, user]));
+    const usersById = new Map(allUsers.map((u) => [u.uid, u]));
 
-    allUsers.forEach((user) => {
-      if (contactSet.has(normalizePhone(user.phoneNumber || ""))) visibleUsers.set(user.uid, user);
+    allUsers.forEach((u) => {
+      if (contactSet.has(normalizePhone(u.phoneNumber || ""))) visibleUsers.set(u.uid, u);
     });
-
-    Object.values(conversations).forEach((conversation) => {
-      const partnerUid = (conversation.participants || []).find((uid) => uid !== authUser?.uid);
+    Object.values(conversations).forEach((conv) => {
+      const partnerUid = (conv.participants || []).find((uid) => uid !== authUser?.uid);
       if (partnerUid && usersById.get(partnerUid)) visibleUsers.set(partnerUid, usersById.get(partnerUid));
     });
-
     return [...visibleUsers.values()].sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
   }, [allUsers, authUser?.uid, conversations, profile?.contacts]);
 
   const filteredUsers = useMemo(() => {
     const value = search.trim().toLowerCase();
     if (!value) return contacts;
-    return contacts.filter((user) => {
-      const fields = [user.displayName, user.email, user.phoneNumber].map((v) => (v || "").toLowerCase());
-      return fields.some((field) => field.includes(value));
-    });
+    return contacts.filter((u) =>
+      [u.displayName, u.email, u.phoneNumber].map((v) => (v || "").toLowerCase()).some((f) => f.includes(value))
+    );
   }, [contacts, search]);
 
   const visibleMessages = useMemo(() => {
     const value = chatSearch.trim().toLowerCase();
     if (!value) return messages;
-    return messages.filter((message) => (message.text || "").toLowerCase().includes(value));
+    return messages.filter((m) => (m.text || "").toLowerCase().includes(value));
   }, [messages, chatSearch]);
 
-  const selectedConversation =
-    authUser && selectedUser ? conversations[conversationIdFor(authUser.uid, selectedUser.uid)] : null;
-
+  const selectedConversation = authUser && selectedUser ? conversations[conversationIdFor(authUser.uid, selectedUser.uid)] : null;
   const selectedTheme = selectedConversation?.themeBy?.[authUser?.uid] || "default";
   const selectedPartnerTyping = selectedConversation?.typing?.[selectedUser?.uid] || false;
   const selectedMuted = selectedConversation?.mutedBy?.[authUser?.uid] || false;
   const selectedCall = selectedConversation?.callState || null;
   const selectedConversationId = authUser && selectedUser ? conversationIdFor(authUser.uid, selectedUser.uid) : "";
 
+  const totalUnread = useMemo(() => {
+    return Object.values(conversations).reduce((acc, conv) => acc + (conv.unreadBy?.[authUser?.uid] || 0), 0);
+  }, [conversations, authUser]);
+
   const stopCallMedia = () => {
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-    }
-    if (localCallStream) localCallStream.getTracks().forEach((track) => track.stop());
-    if (remoteCallStream) remoteCallStream.getTracks().forEach((track) => track.stop());
+    if (peerConnectionRef.current) { peerConnectionRef.current.close(); peerConnectionRef.current = null; }
+    if (localCallStream) localCallStream.getTracks().forEach((t) => t.stop());
+    if (remoteCallStream) remoteCallStream.getTracks().forEach((t) => t.stop());
     setLocalCallStream(null);
     setRemoteCallStream(null);
     setIncomingOffer(null);
@@ -259,7 +283,6 @@ function App() {
   useEffect(() => {
     if (!authUser || !selectedConversationId) return undefined;
     const signalsRef = query(collection(db, "conversations", selectedConversationId, "signals"), where("to", "==", authUser.uid));
-
     return onSnapshot(signalsRef, async (snapshot) => {
       for (const change of snapshot.docChanges()) {
         if (change.type !== "added") continue;
@@ -287,7 +310,6 @@ function App() {
     event.preventDefault();
     setAuthLoading(true);
     setAuthError("");
-
     try {
       if (authMode === "register") {
         const phoneVariants = buildPhoneVariants(authForm.phoneNumber);
@@ -299,13 +321,11 @@ function App() {
           getDocs(query(collection(db, "users"), where("phoneLookupKeys", "array-contains-any", phoneVariants))),
         ]);
 
-        if (!exactPhoneSnapshot.empty || !variantSnapshot.empty) {
+        if (!exactPhoneSnapshot.empty || !variantSnapshot.empty)
           throw new Error("This phone number is already linked to another account.");
-        }
 
         const credentials = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
         await updateProfile(credentials.user, { displayName: authForm.displayName.trim() });
-
         await setDoc(doc(db, "users", credentials.user.uid), {
           uid: credentials.user.uid,
           displayName: authForm.displayName.trim(),
@@ -320,8 +340,8 @@ function App() {
       } else {
         await signInWithEmailAndPassword(auth, authForm.email, authForm.password);
       }
-
       setAuthForm({ displayName: "", phoneNumber: "", email: "", password: "" });
+      setPublicView("login");
     } catch (error) {
       setAuthError(error.message || "Unable to complete request.");
     } finally {
@@ -332,12 +352,8 @@ function App() {
   const addContactByPhone = async (event) => {
     event.preventDefault();
     if (!authUser || !contactPhone.trim()) return;
-
     const phoneVariants = buildPhoneVariants(contactPhone);
-    if (!phoneVariants.length) {
-      setContactFeedback("Please enter a valid phone number.");
-      return;
-    }
+    if (!phoneVariants.length) { setContactFeedback("Please enter a valid phone number."); return; }
 
     const [directMatch, variantMatch] = await Promise.all([
       getDocs(query(collection(db, "users"), where("phoneNumber", "in", phoneVariants))),
@@ -345,30 +361,22 @@ function App() {
     ]);
 
     const candidates = new Map();
-    directMatch.docs.forEach((entry) => candidates.set(entry.id, entry.data()));
-    variantMatch.docs.forEach((entry) => candidates.set(entry.id, entry.data()));
-
+    directMatch.docs.forEach((e) => candidates.set(e.id, e.data()));
+    variantMatch.docs.forEach((e) => candidates.set(e.id, e.data()));
     const candidate = [...candidates.values()][0];
-    if (!candidate) {
-      setContactFeedback("No registered user found with that number.");
-      return;
-    }
 
-    if (candidate.uid === authUser.uid) {
-      setContactFeedback("You cannot add your own number.");
-      return;
-    }
+    if (!candidate) { setContactFeedback("No registered user found with that number."); return; }
+    if (candidate.uid === authUser.uid) { setContactFeedback("You cannot add your own number."); return; }
 
     await updateDoc(doc(db, "users", authUser.uid), { contacts: arrayUnion(candidate.phoneNumber) });
-    setContactFeedback(`Saved ${candidate.displayName} to your contacts.`);
+    setContactFeedback(`✓ Secured link to ${candidate.displayName}`);
     setContactPhone("");
+    setTimeout(() => setContactFeedback(""), 3000);
   };
 
   const uploadToStorage = async (path, file) => {
     if (!file) throw new Error("File missing.");
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      throw new Error("File is too large. Please upload a file up to 15MB.");
-    }
+    if (file.size > MAX_FILE_SIZE_BYTES) throw new Error("File is too large. Please upload a file up to 15MB.");
 
     const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
     const uploadTask = uploadBytesResumable(storageRef, file);
@@ -376,16 +384,9 @@ function App() {
     return new Promise((resolve, reject) => {
       uploadTask.on(
         "state_changed",
-        (snapshot) => {
-          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-          setUploadProgress(progress);
-        },
+        (snapshot) => setUploadProgress(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)),
         async (error) => {
-          try {
-            await deleteObject(storageRef);
-          } catch {
-            // noop
-          }
+          try { await deleteObject(storageRef); } catch {}
           setUploadProgress(0);
           reject(error);
         },
@@ -406,9 +407,9 @@ function App() {
       const displayName = profileNameInput.trim();
       await updateProfile(authUser, { displayName });
       await updateDoc(doc(db, "users", authUser.uid), { displayName });
-      setStatusText("Profile updated.");
+      setStatusText("✓ Identity updated.");
     } catch {
-      setStatusText("Failed to update profile name.");
+      setStatusText("✗ Update failed.");
     } finally {
       setUpdatingProfile(false);
     }
@@ -421,9 +422,9 @@ function App() {
       const photoURL = await uploadToStorage(`avatars/${authUser.uid}`, file);
       await updateProfile(authUser, { photoURL });
       await updateDoc(doc(db, "users", authUser.uid), { photoURL });
-      setStatusText("Profile photo updated.");
+      setStatusText("✓ Profile encrypted.");
     } catch {
-      setStatusText("Photo upload failed. Please check Firebase Storage rules.");
+      setStatusText("✗ Upload failed.");
     } finally {
       setUpdatingProfile(false);
     }
@@ -435,9 +436,9 @@ function App() {
     try {
       const logoURL = await uploadToStorage(`logos/${authUser.uid}`, file);
       await updateDoc(doc(db, "users", authUser.uid), { logoURL });
-      setStatusText("QUANTX logo updated.");
+      setStatusText("✓ QUANTX logo updated.");
     } catch {
-      setStatusText("Logo upload failed.");
+      setStatusText("✗ Logo upload failed.");
     } finally {
       setUpdatingProfile(false);
     }
@@ -446,7 +447,6 @@ function App() {
   const updateTypingState = async (isTyping) => {
     if (!authUser || !selectedUser) return;
     const conversationRef = doc(db, "conversations", conversationIdFor(authUser.uid, selectedUser.uid));
-
     await setDoc(
       conversationRef,
       {
@@ -463,7 +463,6 @@ function App() {
 
     const conversationId = conversationIdFor(authUser.uid, selectedUser.uid);
     const conversationRef = doc(db, "conversations", conversationId);
-
     let payload = { type: "text", text: text.trim() };
 
     if (file) {
@@ -486,6 +485,10 @@ function App() {
     }
 
     if (forwardedFrom) payload.forwardedFrom = forwardedFrom;
+    if (replyTo) {
+      payload.replyTo = { id: replyTo.id, text: replyTo.text, senderId: replyTo.senderId };
+      setReplyTo(null);
+    }
 
     await setDoc(
       conversationRef,
@@ -516,29 +519,19 @@ function App() {
 
   const forwardMessage = async (message, targetUid) => {
     if (!authUser || !targetUid) return;
-    const targetUser = allUsers.find((user) => user.uid === targetUid);
+    const targetUser = allUsers.find((u) => u.uid === targetUid);
     if (!targetUser) return;
-
     const originalSelected = selectedUser;
     setSelectedUser(targetUser);
-
-    await sendMessage({
-      text: message.text || message.fileName || "Forwarded message",
-      forwardedFrom: selectedUser?.displayName || "contact",
-    });
-
+    await sendMessage({ text: message.text || message.fileName || "Forwarded message", forwardedFrom: selectedUser?.displayName || "contact" });
     setSelectedUser(originalSelected);
     setForwardOpenFor(null);
-    setStatusText("Message forwarded.");
+    setStatusText("✓ Message forwarded securely.");
   };
 
   const onMessageChange = async (value) => {
     setMessageInput(value);
-    if (!value.trim()) {
-      updateTypingState(false);
-      return;
-    }
-
+    if (!value.trim()) { updateTypingState(false); return; }
     await updateTypingState(true);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => updateTypingState(false), 1000);
@@ -558,69 +551,46 @@ function App() {
 
   const deleteChatHistory = async () => {
     if (!authUser || !selectedUser) return;
-    const confirmed = window.confirm("Delete chat history only for your account?");
+    const confirmed = window.confirm("Clear this channel's encrypted history?");
     if (!confirmed) return;
-
     const conversationId = conversationIdFor(authUser.uid, selectedUser.uid);
     const messagesRef = collection(db, "conversations", conversationId, "messages");
     const snapshot = await getDocs(messagesRef);
     const batch = writeBatch(db);
-    snapshot.docs.forEach((entry) => batch.update(entry.ref, { deletedFor: arrayUnion(authUser.uid) }));
+    snapshot.docs.forEach((e) => batch.update(e.ref, { deletedFor: arrayUnion(authUser.uid) }));
     if (!snapshot.empty) await batch.commit();
-
     await setDoc(doc(db, "conversations", conversationId), {
       clearedAtBy: { [authUser.uid]: serverTimestamp() },
       unreadBy: { [authUser.uid]: 0 },
     }, { merge: true });
-
     setMessages([]);
-    setStatusText("Chat hidden on your side.");
+    setStatusText("✓ Channel history purged.");
   };
 
   const setCallState = async (nextCallState) => {
     if (!authUser || !selectedUser) return;
-    await setDoc(
-      doc(db, "conversations", conversationIdFor(authUser.uid, selectedUser.uid)),
-      { callState: nextCallState },
-      { merge: true }
-    );
+    await setDoc(doc(db, "conversations", conversationIdFor(authUser.uid, selectedUser.uid)), { callState: nextCallState }, { merge: true });
   };
 
   const sendCallSignal = async (payload) => {
     if (!authUser || !selectedUser) return;
     await addDoc(collection(db, "conversations", conversationIdFor(authUser.uid, selectedUser.uid), "signals"), {
-      ...payload,
-      from: authUser.uid,
-      to: selectedUser.uid,
-      createdAt: serverTimestamp(),
+      ...payload, from: authUser.uid, to: selectedUser.uid, createdAt: serverTimestamp(),
     });
   };
 
   const buildPeerConnection = (stream) => {
-    const peerConnection = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    });
-
+    const peerConnection = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     stream.getTracks().forEach((track) => peerConnection.addTrack(track, stream));
-    peerConnection.ontrack = (event) => {
-      if (event.streams?.[0]) setRemoteCallStream(event.streams[0]);
-    };
-    peerConnection.onicecandidate = (event) => {
-      if (event.candidate) {
-        sendCallSignal({ type: "ice", candidate: event.candidate.toJSON() });
-      }
-    };
-
+    peerConnection.ontrack = (event) => { if (event.streams?.[0]) setRemoteCallStream(event.streams[0]); };
+    peerConnection.onicecandidate = (event) => { if (event.candidate) sendCallSignal({ type: "ice", candidate: event.candidate.toJSON() }); };
     peerConnectionRef.current = peerConnection;
     return peerConnection;
   };
 
   const startCall = async (type) => {
     if (!authUser || !selectedUser) return;
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setStatusText("Your browser does not support calling.");
-      return;
-    }
+    if (!navigator.mediaDevices?.getUserMedia) { setStatusText("Your browser does not support calling."); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: type === "video" });
       setLocalCallStream(stream);
@@ -628,13 +598,7 @@ function App() {
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
       await sendCallSignal({ type: "offer", sdp: offer });
-      await setCallState({
-        from: authUser.uid,
-        to: selectedUser.uid,
-        type,
-        status: "ringing",
-        startedAt: serverTimestamp(),
-      });
+      await setCallState({ from: authUser.uid, to: selectedUser.uid, type, status: "ringing", startedAt: serverTimestamp() });
     } catch (error) {
       setStatusText(error?.message || "Unable to start call.");
     }
@@ -643,10 +607,7 @@ function App() {
   const acceptCall = async () => {
     if (!selectedCall || !incomingOffer) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: selectedCall.type === "video",
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: selectedCall.type === "video" });
       setLocalCallStream(stream);
       const peerConnection = buildPeerConnection(stream);
       await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOffer));
@@ -668,19 +629,30 @@ function App() {
 
   const logout = async () => {
     if (authUser) {
-      await updateDoc(doc(db, "users", authUser.uid), { isOnline: false, lastSeen: serverTimestamp() });
+      await updateDoc(doc(db, "users", authUser.uid), { isOnline: false, lastSeen: serverTimestamp(), activeAt: serverTimestamp() });
     }
     await signOut(auth);
   };
 
+  // ─── Boot loader ───────────────────────────────────────────────────────────
   if (!authReady) {
     return (
-      <div className={`auth-shell app-theme-${appTheme}`}>
-        <div className="auth-card">
-          <h1>QUANTX</h1>
-          <p>Checking your secure workspace...</p>
-          <button type="button" className="theme-switch-btn" onClick={() => setAppTheme((prev) => (prev === "dark" ? "light" : "dark"))}>
-            {appTheme === "dark" ? "🌞 Light mode" : "🌙 Dark mode"}
+      <div className={`qx-boot app-theme-${appTheme}`}>
+        <div className="qx-boot-card">
+          <div className="qx-boot-brand">
+            <div className="qx-boot-logo">
+              <span>Q</span>
+              <div className="qx-boot-ring" />
+              <div className="qx-boot-ring qx-boot-ring-2" />
+            </div>
+            <h1>QUANTX</h1>
+          </div>
+          <div className="qx-boot-status">
+            <div className="qx-boot-bar"><div className="qx-boot-bar-fill" /></div>
+            <p>Initializing secure workspace...</p>
+          </div>
+          <button type="button" className="qx-theme-toggle" onClick={() => setAppTheme((p) => p === "dark" ? "light" : "dark")}>
+            {appTheme === "dark" ? "☀ Light" : "☾ Dark"}
           </button>
         </div>
       </div>
@@ -688,146 +660,161 @@ function App() {
   }
 
   if (!authUser) {
+    if (publicView === "home") {
+      return (
+        <PublicHomePage
+          appTheme={appTheme}
+          onToggleTheme={() => setAppTheme((p) => p === "dark" ? "light" : "dark")}
+          onNavigate={(view) => { setAuthMode(view === "register" ? "register" : "login"); setPublicView(view); }}
+        />
+      );
+    }
     return (
-      <div className={`auth-shell app-theme-${appTheme}`}>
-        <div className="auth-card">
-          <h1>QUANTX</h1>
-          <p>Enterprise-grade messaging with modern collaboration controls.</p>
-
-          <button type="button" className="theme-switch-btn" onClick={() => setAppTheme((prev) => (prev === "dark" ? "light" : "dark"))}>
-            {appTheme === "dark" ? "🌞 Light mode" : "🌙 Dark mode"}
-          </button>
-
-          <div className="auth-tabs">
-            <button type="button" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>
-              Login
-            </button>
-            <button
-              type="button"
-              className={authMode === "register" ? "active" : ""}
-              onClick={() => setAuthMode("register")}
-            >
-              Register
-            </button>
-          </div>
-
-          <form className="auth-form" onSubmit={submitAuth}>
-            {authMode === "register" && (
-              <>
-                <input
-                  type="text"
-                  placeholder="Full name"
-                  value={authForm.displayName}
-                  onChange={(event) => setAuthForm((prev) => ({ ...prev, displayName: event.target.value }))}
-                  required
-                  minLength={2}
-                />
-                <input
-                  type="tel"
-                  placeholder="Phone number (with country code)"
-                  value={authForm.phoneNumber}
-                  onChange={(event) => setAuthForm((prev) => ({ ...prev, phoneNumber: event.target.value }))}
-                  required
-                />
-              </>
-            )}
-
-            <input
-              type="email"
-              placeholder="Email"
-              value={authForm.email}
-              onChange={(event) => setAuthForm((prev) => ({ ...prev, email: event.target.value }))}
-              required
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              value={authForm.password}
-              onChange={(event) => setAuthForm((prev) => ({ ...prev, password: event.target.value }))}
-              required
-              minLength={6}
-            />
-
-            {authError && <div className="error-text">{authError}</div>}
-            <button type="submit" disabled={authLoading}>{authLoading ? "Please wait..." : authMode === "register" ? "Create account" : "Sign in"}</button>
-          </form>
-        </div>
-      </div>
+      <AuthPage
+        appTheme={appTheme}
+        authMode={authMode}
+        authForm={authForm}
+        authLoading={authLoading}
+        authError={authError}
+        onToggleTheme={() => setAppTheme((p) => p === "dark" ? "light" : "dark")}
+        onModeChange={setAuthMode}
+        onFormChange={(field, value) => setAuthForm((prev) => ({ ...prev, [field]: value }))}
+        onSubmit={submitAuth}
+        onBackToHome={() => setPublicView("home")}
+      />
     );
   }
 
+  // ─── Main Chat UI ──────────────────────────────────────────────────────────
   return (
-    <div className={`chat-shell theme-${selectedTheme} app-theme-${appTheme}`}>
-      <aside className="chat-sidebar">
-        <div className="sidebar-header">
-          <div className="brand-block">
-            {profile?.logoURL ? <img src={profile.logoURL} alt="QUANTX logo" className="brand-logo" /> : <div className="brand-logo">Q</div>}
-            <div>
+    <div className={`qx-shell theme-${selectedTheme} app-theme-${appTheme} ${showMobileSidebar ? "sidebar-open" : ""}`}>
+
+      {/* ── SIDEBAR ── */}
+      <aside className="qx-sidebar">
+        {/* Sidebar header */}
+        <div className="qx-sidebar-header">
+          <div className="qx-brand">
+            {profile?.logoURL
+              ? <img src={profile.logoURL} alt="QUANTX" className="qx-brand-logo-img" />
+              : <div className="qx-brand-mark"><span>Q</span><div className="qx-brand-ring" /></div>
+            }
+            <div className="qx-brand-info">
               <h2>QUANTX</h2>
-              <span>{profile?.phoneNumber || authUser.email}</span>
+              <span className="qx-brand-sub">Secure Channel</span>
             </div>
           </div>
-          <div className="sidebar-actions">
-            <button type="button" onClick={() => setAppTheme((prev) => (prev === "dark" ? "light" : "dark"))}>
-              {appTheme === "dark" ? "🌞" : "🌙"}
+          <div className="qx-sidebar-controls">
+            <button type="button" className="qx-icon-btn" title="Toggle theme" onClick={() => setAppTheme((p) => p === "dark" ? "light" : "dark")}>
+              {appTheme === "dark" ? "☀" : "☾"}
             </button>
-            <button type="button" onClick={() => setShowProfilePanel((prev) => !prev)}>Profile</button>
-            <button type="button" onClick={logout}>Logout</button>
+            <button type="button" className={`qx-icon-btn ${showProfilePanel ? "qx-icon-btn--active" : ""}`} title="Profile" onClick={() => setShowProfilePanel((p) => !p)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            </button>
+            <button type="button" className="qx-icon-btn qx-icon-btn--danger" title="Sign out" onClick={logout}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </button>
           </div>
         </div>
 
+        {/* Profile panel */}
         {showProfilePanel && (
-          <form className="profile-panel" onSubmit={updateProfileName}>
-            <div className="profile-avatar-row">
-              <img
-                className="profile-avatar-preview"
-                src={profile?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.displayName || "User")}&background=128C7E&color=fff`}
-                alt={profile?.displayName || "profile"}
-              />
-              <label htmlFor="profile-photo" className="profile-upload-btn">Change photo</label>
-              <input id="profile-photo" type="file" hidden accept="image/*" onChange={(event) => event.target.files?.[0] && updateProfilePicture(event.target.files[0])} />
+          <div className="qx-profile-panel">
+            <div className="qx-profile-header">
+              <div className="qx-profile-avatar-wrap">
+                <img
+                  className="qx-profile-avatar"
+                  src={profile?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.displayName || "User")}&background=4d7fff&color=fff&bold=true`}
+                  alt={profile?.displayName}
+                />
+                <label htmlFor="profile-photo" className="qx-avatar-edit" title="Change photo">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </label>
+                <input id="profile-photo" type="file" hidden accept="image/*" onChange={(e) => e.target.files?.[0] && updateProfilePicture(e.target.files[0])} />
+              </div>
+              <div>
+                <p className="qx-profile-name">{profile?.displayName || "Agent"}</p>
+                <p className="qx-profile-phone">{profile?.phoneNumber || authUser.email}</p>
+                <div className="qx-status-dot-row"><span className="qx-status-dot" /><span>Online & Secure</span></div>
+              </div>
             </div>
-
-            <div className="profile-avatar-row">
-              <label htmlFor="brand-logo" className="profile-upload-btn">Upload QUANTX logo</label>
-              <input id="brand-logo" type="file" hidden accept="image/*" onChange={(event) => event.target.files?.[0] && updateBrandLogo(event.target.files[0])} />
+            <form className="qx-profile-form" onSubmit={updateProfileName}>
+              <div className="qx-form-group">
+                <label>Display Name</label>
+                <input type="text" value={profileNameInput} placeholder="Enter your name" onChange={(e) => setProfileNameInput(e.target.value)} minLength={2} required />
+              </div>
+              <button type="submit" className="qx-btn qx-btn--primary" disabled={updatingProfile}>
+                {updatingProfile ? <><span className="qx-spinner-sm" /> Updating...</> : "Save Identity"}
+              </button>
+            </form>
+            <div className="qx-profile-uploads">
+              <label htmlFor="brand-logo" className="qx-upload-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                Upload Logo
+              </label>
+              <input id="brand-logo" type="file" hidden accept="image/*" onChange={(e) => e.target.files?.[0] && updateBrandLogo(e.target.files[0])} />
             </div>
-
-            <input
-              type="text"
-              value={profileNameInput}
-              placeholder="Update your name"
-              onChange={(event) => setProfileNameInput(event.target.value)}
-              minLength={2}
-              required
-            />
-            <button type="submit" disabled={updatingProfile}>{updatingProfile ? "Saving..." : "Save profile"}</button>
-          </form>
+          </div>
         )}
 
-        <form className="add-contact-form" onSubmit={addContactByPhone}>
-          <input type="tel" placeholder="Add contact by phone" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} />
-          <button type="submit">Add</button>
-        </form>
-        {contactFeedback && <p className="feedback">{contactFeedback}</p>}
-        {statusText && <p className="feedback">{statusText}</p>}
-        {sendingAttachment && <p className="feedback">Uploading file... {uploadProgress}%</p>}
-
-        <div className="search-box">
-          <input type="text" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search contacts" />
+        {/* Add contact */}
+        <div className="qx-add-contact">
+          <form onSubmit={addContactByPhone}>
+            <div className="qx-contact-input-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="qx-input-icon"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 012 1.22 2 2 0 014 .04h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+              <input type="tel" placeholder="Add by phone number" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+              <button type="submit" className="qx-add-btn">Add</button>
+            </div>
+          </form>
+          {contactFeedback && <p className="qx-feedback qx-feedback--success">{contactFeedback}</p>}
+          {statusText && <p className="qx-feedback">{statusText}</p>}
         </div>
 
-        <div className="user-list">
+        {/* Search */}
+        <div className="qx-search-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="qx-search-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search contacts..." />
+          {search && <button type="button" className="qx-search-clear" onClick={() => setSearch("")}>✕</button>}
+        </div>
+
+        {/* Contact list */}
+        <div className="qx-contact-list">
+          {filteredUsers.length === 0 && (
+            <div className="qx-empty-contacts">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="36" height="36"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+              <p>No contacts found</p>
+              <span>Add contacts via phone number above</span>
+            </div>
+          )}
           {filteredUsers.map((user) => {
             const conversationId = conversationIdFor(authUser.uid, user.uid);
-            const conversation = conversations[conversationId];
-            const unreadCount = conversation?.unreadBy?.[authUser.uid] || 0;
+            const conv = conversations[conversationId];
+            const unreadCount = conv?.unreadBy?.[authUser.uid] || 0;
+            const isActive = selectedUser?.uid === user.uid;
+            const initials = (user.displayName || "U").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
             return (
-              <button key={user.uid} type="button" className={`user-tile ${selectedUser?.uid === user.uid ? "active" : ""}`} onClick={() => setSelectedUser(user)}>
-                <div className="avatar">{(user.displayName || "U").charAt(0).toUpperCase()}</div>
-                <div className="tile-content">
-                  <div className="tile-title-row"><strong>{user.displayName || "Unnamed user"}</strong><span>{formatTime(conversation?.lastMessageAt)}</span></div>
-                  <div className="tile-sub-row"><p>{conversation?.lastMessage || user.phoneNumber || user.email}</p>{unreadCount > 0 && <b className="unread-pill">{unreadCount}</b>}</div>
+              <button key={user.uid} type="button"
+                className={`qx-contact-tile ${isActive ? "qx-contact-tile--active" : ""}`}
+                onClick={() => { setSelectedUser(user); setShowMobileSidebar(false); }}
+              >
+                <div className="qx-contact-avatar">
+                  {user.photoURL
+                    ? <img src={user.photoURL} alt={user.displayName} />
+                    : <span>{initials}</span>
+                  }
+                  <span className={`qx-presence ${user.isOnline ? "qx-presence--online" : "qx-presence--offline"}`} />
+                </div>
+                <div className="qx-contact-info">
+                  <div className="qx-contact-top">
+                    <strong>{user.displayName || "Unknown"}</strong>
+                    <span className="qx-contact-time">{formatTime(conv?.lastMessageAt)}</span>
+                  </div>
+                  <div className="qx-contact-bottom">
+                    <span className="qx-contact-preview">
+                      {conv?.lastMessageSender === authUser.uid && <span className="qx-sent-tick">✓ </span>}
+                      {conv?.lastMessage || user.phoneNumber || user.email || "No messages yet"}
+                    </span>
+                    {unreadCount > 0 && <span className="qx-unread-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+                  </div>
                 </div>
               </button>
             );
@@ -835,120 +822,313 @@ function App() {
         </div>
       </aside>
 
-      <main className="chat-main">
+      {/* ── MAIN CHAT ── */}
+      <main className="qx-main">
         {!selectedUser ? (
-          <div className="empty-state"><h3>Welcome to QUANTX</h3><p>Select a contact to start secure collaboration.</p></div>
+          <div className="qx-welcome">
+            <div className="qx-welcome-graphic">
+              <div className="qx-welcome-orb">
+                <div className="qx-welcome-ring" />
+                <div className="qx-welcome-ring qx-welcome-ring-2" />
+                <div className="qx-welcome-ring qx-welcome-ring-3" />
+                <span>⚛</span>
+              </div>
+            </div>
+            <h3>Welcome to QUANTX</h3>
+            <p>Select a contact to begin a quantum-secured conversation</p>
+            <div className="qx-welcome-features">
+              <span>🔐 End-to-End Encrypted</span>
+              <span>⚡ Real-Time Sync</span>
+              <span>🛡️ Zero-Knowledge</span>
+            </div>
+          </div>
         ) : (
           <>
-            <header className="chat-header">
-              <div className="avatar">{(selectedUser.displayName || "U").charAt(0).toUpperCase()}</div>
-              <div>
-                <h3>{selectedUser.displayName}</h3>
-                <span>{selectedUser.isOnline ? "online" : `last seen ${formatTime(selectedUser.lastSeen) || "recently"}`}</span>
+            {/* Chat header */}
+            <header className="qx-chat-header">
+              <button type="button" className="qx-mobile-back" onClick={() => { setSelectedUser(null); setShowMobileSidebar(true); }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              </button>
+              <div className="qx-chat-contact-avatar">
+                {selectedUser.photoURL
+                  ? <img src={selectedUser.photoURL} alt={selectedUser.displayName} />
+                  : <span>{(selectedUser.displayName || "U").charAt(0).toUpperCase()}</span>
+                }
+                <span className={`qx-presence ${selectedUser.isOnline ? "qx-presence--online" : "qx-presence--offline"}`} />
               </div>
-              <div className="chat-header-actions">
-                <button type="button" aria-label="Voice call" onClick={() => startCall("audio")}>📞</button>
-                <button type="button" aria-label="Video call" onClick={() => startCall("video")}>🎥</button>
-                <button type="button" onClick={setMute}>{selectedMuted ? "🔕" : "🔔"}</button>
-                <button type="button" onClick={deleteChatHistory}>🗑️</button>
+              <div className="qx-chat-contact-meta">
+                <h3>{selectedUser.displayName}</h3>
+                <span className={selectedUser.isOnline ? "qx-online-label" : "qx-offline-label"}>
+                  {selectedUser.isOnline ? "● Online" : "○ Offline"}
+                </span>
+              </div>
+              <div className="qx-chat-actions">
+                <button type="button" className="qx-icon-btn" title="Voice call" onClick={() => startCall("audio")}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 012 1.22 2 2 0 014 .04h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                </button>
+                <button type="button" className="qx-icon-btn" title="Video call" onClick={() => startCall("video")}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                </button>
+                <button type="button" className={`qx-icon-btn ${selectedMuted ? "qx-icon-btn--active" : ""}`} title={selectedMuted ? "Unmute" : "Mute"} onClick={setMute}>
+                  {selectedMuted
+                    ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23M12 19v4M8 23h8"/></svg>
+                    : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+                  }
+                </button>
+                <div className="qx-theme-select-wrap">
+                  <select value={selectedTheme} onChange={(e) => setTheme(e.target.value)} className="qx-theme-select">
+                    {THEMES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </select>
+                </div>
+                <button type="button" className="qx-icon-btn qx-icon-btn--danger" title="Clear history" onClick={deleteChatHistory}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                </button>
               </div>
             </header>
 
-            <div className="toolbar-row">
-              <input value={chatSearch} onChange={(event) => setChatSearch(event.target.value)} placeholder="Search in this chat" />
-              <select value={selectedTheme} onChange={(event) => setTheme(event.target.value)}>
-                {THEMES.map((theme) => <option key={theme.id} value={theme.id}>{theme.label}</option>)}
-              </select>
+            {/* Chat search */}
+            <div className="qx-chat-toolbar">
+              <div className="qx-chat-search-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="qx-search-icon-sm"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} placeholder="Search in conversation..." />
+                {chatSearch && <button type="button" className="qx-search-clear" onClick={() => setChatSearch("")}>✕</button>}
+              </div>
+              <div className="qx-encryption-badge">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                E2E Encrypted
+              </div>
             </div>
 
+            {/* Call banner */}
             {selectedCall && selectedCall.status !== "ended" && (
-              <div className="call-banner">
-                <span>{selectedCall.type === "video" ? "Video" : "Audio"} call: {selectedCall.status}</span>
-                {selectedCall.to === authUser.uid && selectedCall.status === "ringing" && <button type="button" onClick={acceptCall}>Accept</button>}
-                <button type="button" onClick={endCall}>End</button>
+              <div className={`qx-call-banner qx-call-banner--${selectedCall.status}`}>
+                <div className="qx-call-info">
+                  <div className="qx-call-icon">{selectedCall.type === "video" ? "🎥" : "📞"}</div>
+                  <div>
+                    <strong>{selectedCall.type === "video" ? "Video" : "Voice"} Call</strong>
+                    <span className="qx-call-status">{selectedCall.status === "ringing" ? "Incoming..." : selectedCall.status === "active" ? "In progress" : selectedCall.status}</span>
+                  </div>
+                </div>
+                <div className="qx-call-controls">
+                  {selectedCall.to === authUser.uid && selectedCall.status === "ringing" && (
+                    <button type="button" className="qx-call-accept" onClick={acceptCall}>Accept</button>
+                  )}
+                  <button type="button" className="qx-call-end" onClick={endCall}>End</button>
+                </div>
               </div>
             )}
+
+            {/* Video panels */}
             {(localCallStream || remoteCallStream) && (
-              <div className="call-media-panel">
-                <video ref={localVideoRef} autoPlay muted playsInline className="call-video" />
-                <video ref={remoteVideoRef} autoPlay playsInline className="call-video" />
+              <div className="qx-call-media">
+                <div className="qx-video-wrap">
+                  <video ref={remoteVideoRef} autoPlay playsInline className="qx-video-main" />
+                  <video ref={localVideoRef} autoPlay muted playsInline className="qx-video-pip" />
+                </div>
               </div>
             )}
 
-            <section className="messages">
-              {visibleMessages.map((message) => {
-                const isMine = message.senderId === authUser.uid;
+            {/* Messages */}
+            <section className="qx-messages">
+              {visibleMessages.length === 0 && (
+                <div className="qx-messages-empty">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="40" height="40"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                  <p>No messages yet. Say hello!</p>
+                </div>
+              )}
+              {visibleMessages.map((msg, index) => {
+                const isMine = msg.senderId === authUser.uid;
+                const prevMsg = visibleMessages[index - 1];
+                const showDate = !prevMsg || formatDate(msg.createdAt) !== formatDate(prevMsg?.createdAt);
+                const isRead = (msg.readBy || []).includes(selectedUser.uid);
                 return (
-                  <div key={message.id} className={`message-row ${isMine ? "mine" : "theirs"}`}>
-                    <div className="message-bubble">
-                      {message.forwardedFrom && <small>Forwarded from {message.forwardedFrom}</small>}
-                      {message.type === "image" && message.fileURL && <img src={message.fileURL} alt={message.fileName || "attachment"} className="chat-image" />}
-                      {message.type === "file" && message.fileURL && <a href={message.fileURL} target="_blank" rel="noreferrer" className="file-link">{message.fileName || "Open file"}</a>}
-                      {!!message.text && <p>{message.text}</p>}
-                      <div className="message-meta">
-                        <span>{formatTime(message.createdAt)}</span>
-                        <button type="button" onClick={() => setForwardOpenFor(forwardOpenFor === message.id ? null : message.id)}>Forward</button>
+                  <div key={msg.id}>
+                    {showDate && (
+                      <div className="qx-date-divider">
+                        <span>{formatDate(msg.createdAt)}</span>
                       </div>
-
-                      {forwardOpenFor === message.id && (
-                        <div className="forward-panel">
-                          {contacts.filter((contact) => contact.uid !== selectedUser.uid).map((contact) => (
-                            <button key={contact.uid} type="button" onClick={() => forwardMessage(message, contact.uid)}>{contact.displayName}</button>
-                          ))}
+                    )}
+                    <div className={`qx-msg-row ${isMine ? "qx-msg-row--mine" : "qx-msg-row--theirs"}`}>
+                      {!isMine && (
+                        <div className="qx-msg-avatar">
+                          {selectedUser.photoURL
+                            ? <img src={selectedUser.photoURL} alt={selectedUser.displayName} />
+                            : <span>{(selectedUser.displayName || "U").charAt(0).toUpperCase()}</span>
+                          }
                         </div>
                       )}
+                      <div className="qx-msg-content">
+                        {msg.replyTo && (
+                          <div className="qx-reply-preview">
+                            <span className="qx-reply-bar" />
+                            <span>{msg.replyTo.senderId === authUser.uid ? "You" : selectedUser.displayName}: {msg.replyTo.text?.slice(0, 80)}</span>
+                          </div>
+                        )}
+                        <div className={`qx-bubble ${isMine ? "qx-bubble--mine" : "qx-bubble--theirs"}`}>
+                          {msg.forwardedFrom && (
+                            <div className="qx-forwarded-label">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 014-4h12"/></svg>
+                              Forwarded from {msg.forwardedFrom}
+                            </div>
+                          )}
+                          {msg.type === "image" && msg.fileURL && (
+                            <img src={msg.fileURL} alt={msg.fileName || "Image"} className="qx-msg-image" onClick={() => setImagePreview(msg.fileURL)} />
+                          )}
+                          {msg.type === "file" && msg.fileURL && (
+                            <a href={msg.fileURL} target="_blank" rel="noreferrer" className="qx-file-attach">
+                              <div className="qx-file-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                              </div>
+                              <div className="qx-file-info">
+                                <span className="qx-file-name">{msg.fileName || "File"}</span>
+                                {msg.fileSize && <span className="qx-file-size">{(msg.fileSize / 1024).toFixed(1)} KB</span>}
+                              </div>
+                            </a>
+                          )}
+                          {!!msg.text && <p className="qx-msg-text">{msg.text}</p>}
+                          <div className="qx-msg-meta">
+                            <span className="qx-msg-time">{formatTime(msg.createdAt)}</span>
+                            {isMine && (
+                              <span className={`qx-read-receipt ${isRead ? "qx-read-receipt--read" : ""}`}>
+                                {isRead ? "✓✓" : "✓"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="qx-msg-actions">
+                          <button type="button" className="qx-msg-action-btn" title="Reply" onClick={() => setReplyTo(msg)}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 00-4-4H4"/></svg>
+                          </button>
+                          <button type="button" className="qx-msg-action-btn" title="Forward" onClick={() => setForwardOpenFor(forwardOpenFor === msg.id ? null : msg.id)}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 014-4h12"/></svg>
+                          </button>
+                        </div>
+                        {forwardOpenFor === msg.id && (
+                          <div className="qx-forward-panel">
+                            <p className="qx-forward-label">Forward to:</p>
+                            {contacts.filter((c) => c.uid !== selectedUser.uid).map((c) => (
+                              <button key={c.uid} type="button" className="qx-forward-contact" onClick={() => forwardMessage(msg, c.uid)}>
+                                <div className="qx-forward-avatar">{(c.displayName || "U").charAt(0).toUpperCase()}</div>
+                                {c.displayName}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
               })}
+              <div ref={messagesEndRef} />
             </section>
 
-            <div className="typing-row">{selectedPartnerTyping ? `${selectedUser.displayName} is typing...` : ""}</div>
-
-            <footer className="composer">
-              <button type="button" className="attach-btn" onClick={() => setShowEmojiPicker((prev) => !prev)}>😊</button>
-              {showEmojiPicker && (
-                <div className="emoji-picker">
-                  {QUICK_EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => onMessageChange(`${messageInput}${emoji}`)}>{emoji}</button>)}
+            {/* Typing indicator */}
+            <div className="qx-typing-row">
+              {selectedPartnerTyping && (
+                <div className="qx-typing-indicator">
+                  <div className="qx-typing-dots"><span /><span /><span /></div>
+                  <span>{selectedUser.displayName} is typing...</span>
                 </div>
               )}
-              <label htmlFor="attachment" className="attach-btn">📎</label>
-              <input
-                id="attachment"
-                type="file"
-                hidden
-                accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip"
-                onChange={(event) => {
-                  if (event.target.files?.[0]) {
-                    sendMessage({ file: event.target.files[0] });
-                    event.target.value = "";
+            </div>
+
+            {/* Reply preview */}
+            {replyTo && (
+              <div className="qx-reply-bar-wrap">
+                <div className="qx-reply-preview-bar">
+                  <span className="qx-reply-accent" />
+                  <div>
+                    <span className="qx-reply-to-name">{replyTo.senderId === authUser.uid ? "You" : selectedUser.displayName}</span>
+                    <span className="qx-reply-to-text">{replyTo.text?.slice(0, 100)}</span>
+                  </div>
+                </div>
+                <button type="button" className="qx-reply-close" onClick={() => setReplyTo(null)}>✕</button>
+              </div>
+            )}
+
+            {/* Composer */}
+            <footer className="qx-composer" ref={composerRef}>
+              <div className="qx-composer-inner">
+                <div className="qx-composer-tools">
+                  <button type="button" className="qx-composer-btn" title="Emoji" onClick={() => setShowEmojiPicker((p) => !p)}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                  </button>
+                  <label htmlFor="attachment" className="qx-composer-btn" title="Attach file">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                  </label>
+                  <input id="attachment" type="file" hidden accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip"
+                    onChange={(e) => { if (e.target.files?.[0]) { sendMessage({ file: e.target.files[0] }); e.target.value = ""; } }}
+                  />
+                </div>
+
+                <div className="qx-input-wrap">
+                  <input
+                    type="text"
+                    value={messageInput}
+                    onChange={(e) => onMessageChange(e.target.value)}
+                    placeholder="Type a secure message..."
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage({ text: messageInput }); } }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  className={`qx-send-btn ${messageInput.trim() || sendingAttachment ? "qx-send-btn--active" : ""}`}
+                  onClick={() => sendMessage({ text: messageInput })}
+                  disabled={sendingAttachment}
+                >
+                  {sendingAttachment
+                    ? <div className="qx-spinner-sm" />
+                    : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                   }
-                }}
-              />
-              <input
-                type="text"
-                value={messageInput}
-                onChange={(event) => onMessageChange(event.target.value)}
-                placeholder="Type a message"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    sendMessage({ text: messageInput });
-                  }
-                }}
-              />
-              <button type="button" onClick={() => sendMessage({ text: messageInput })}>{sendingAttachment ? "Uploading..." : "Send"}</button>
+                </button>
+              </div>
+
+              {/* Emoji picker */}
+              {showEmojiPicker && (
+                <div className="qx-emoji-picker">
+                  {QUICK_EMOJIS.map((emoji) => (
+                    <button key={emoji} type="button" onClick={() => { onMessageChange(`${messageInput}${emoji}`); setShowEmojiPicker(false); }}>
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Upload progress */}
+              {sendingAttachment && uploadProgress > 0 && (
+                <div className="qx-upload-progress">
+                  <div className="qx-upload-bar"><div className="qx-upload-fill" style={{ width: `${uploadProgress}%` }} /></div>
+                  <span>{uploadProgress}%</span>
+                </div>
+              )}
             </footer>
           </>
         )}
       </main>
 
-      {(sendingAttachment || updatingProfile || authLoading) && (
-        <div className="global-loader">
-          <div className="loader-spinner" />
-          <p>Please wait...</p>
+      {/* Mobile overlay */}
+      {showMobileSidebar && <div className="qx-overlay" onClick={() => setShowMobileSidebar(false)} />}
+
+      {/* Image lightbox */}
+      {imagePreview && (
+        <div className="qx-lightbox" onClick={() => setImagePreview(null)}>
+          <button type="button" className="qx-lightbox-close" onClick={() => setImagePreview(null)}>✕</button>
+          <img src={imagePreview} alt="Preview" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
+
+      {/* Global loader */}
+      {(sendingAttachment && !uploadProgress) || updatingProfile || authLoading ? (
+        <div className="qx-global-loader">
+          <div className="qx-loader-core">
+            <div className="qx-loader-ring" />
+            <div className="qx-loader-ring qx-loader-ring-2" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="24" height="24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <p>Securing transmission...</p>
+        </div>
+      ) : null}
     </div>
   );
 }

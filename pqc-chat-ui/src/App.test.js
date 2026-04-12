@@ -21,8 +21,9 @@ jest.mock(
     addDoc: jest.fn(),
     arrayUnion: jest.fn(),
     collection: jest.fn(),
+    deleteDoc: jest.fn(),
     doc: jest.fn(),
-    getDoc: jest.fn(),
+    getDocs: jest.fn(async () => ({ empty: true, docs: [], forEach: jest.fn() })),
     increment: jest.fn(),
     onSnapshot: jest.fn(),
     orderBy: jest.fn(),
@@ -31,6 +32,7 @@ jest.mock(
     setDoc: jest.fn(),
     updateDoc: jest.fn(),
     where: jest.fn(),
+    writeBatch: jest.fn(() => ({ update: jest.fn(), commit: jest.fn() })),
   }),
   { virtual: true }
 );
@@ -38,9 +40,13 @@ jest.mock(
 jest.mock(
   "firebase/storage",
   () => ({
+    deleteObject: jest.fn(),
     getDownloadURL: jest.fn(),
     ref: jest.fn(),
-    uploadBytes: jest.fn(),
+    uploadBytesResumable: jest.fn(() => ({
+      on: (_evt, _progress, _error, done) => done(),
+      snapshot: { ref: {} },
+    })),
   }),
   { virtual: true }
 );
@@ -55,5 +61,7 @@ import App from "./App";
 
 test("renders auth heading", () => {
   render(<App />);
-  expect(screen.getByText(/MyChatApp/i)).toBeInTheDocument();
+  expect(screen.getByText(/QUANTX/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Login/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Register/i })).toBeInTheDocument();
 });
