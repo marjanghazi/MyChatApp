@@ -3,7 +3,7 @@
    Fonts: Orbitron (display) + JetBrains Mono (code) + Syne (body)
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=JetBrains+Mono:ital,wght@0,300;0,400;0,600;1,400&family=Syne:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@400;600;700;800;900&family=JetBrains+Mono:ital,wght@0,300;0,400;0,600;1,400&family=Syne:wght@400;500;600;700;800&display=swap');
 
 *, *::before, *::after {
   margin: 0;
@@ -69,11 +69,22 @@
   min-height: 100vh;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  font-family: 'Syne', sans-serif;
+  font-family: 'Inter', 'Syne', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: var(--au-text-primary);
   transition: background 0.4s ease, color 0.4s ease;
   position: relative;
   overflow: hidden;
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
+}
+
+.input-group input,
+.auth-section-heading p,
+.error-text,
+.forgot-password {
+  font-family: 'Inter', 'Syne', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
 }
 
 /* ─────────────────────────────────────────────
@@ -836,6 +847,29 @@
   }
 
   .submit-btn { font-size: 12px; padding: 14px; }
+}
+
+@media (max-width: 640px) {
+  .auth-card {
+    padding: 1.35rem;
+    border-radius: 18px;
+  }
+
+  .auth-controls {
+    width: 100%;
+  }
+
+  .theme-switch-btn,
+  .back-home-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .auth-security-badge {
+    padding: 9px 12px;
+    font-size: 9px;
+    letter-spacing: 0.55px;
+  }
 }
 
 /* ─────────────────────────────────────────────

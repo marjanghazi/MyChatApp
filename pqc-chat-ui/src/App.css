@@ -4,7 +4,7 @@
    Matches PublicHomePage cybersecurity aesthetic
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@400;600;700;800;900&family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;500;600;700;800&display=swap');
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -14,8 +14,10 @@
 
 html, body, #root {
   height: 100%;
-  font-family: 'Syne', sans-serif;
+  font-family: 'Inter', 'Syne', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
 }
 
 /* ─────────────────────────────────────────────
@@ -137,6 +139,31 @@ html, body, #root {
    ───────────────────────────────────────────── */
 button { cursor: pointer; background: none; border: none; font: inherit; outline: none; }
 input, select, textarea { font: inherit; outline: none; }
+
+/* Consistent numeric rendering across chat text, timestamps, and inputs. */
+.qx-msg-text,
+.qx-input-wrap input,
+.qx-chat-search-wrap input,
+.qx-search-wrap input,
+.qx-contact-input-wrap input,
+.qx-form-group input,
+.qx-file-name,
+.qx-contact-preview,
+.qx-reply-to-text {
+  font-family: 'Inter', 'Syne', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+.qx-msg-time,
+.qx-contact-time,
+.qx-unread-badge,
+.qx-file-size,
+.qx-date-divider span,
+.qx-typing-indicator > span {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
 
 /* ─────────────────────────────────────────────
    BOOT SCREEN
