@@ -2173,3 +2173,81 @@ select:focus-visible {
 .qx-composer {
   transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
 }
+
+/* ─────────────────────────────────────────────
+   COMMUNITY / GROUP CHAT STYLES
+   ───────────────────────────────────────────── */
+.qx-community-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.qx-list-section h4 {
+  margin: 10px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+}
+
+.qx-channel-discover {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--qx-border, #2d3a4a);
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.qx-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: grid;
+  place-items: center;
+  z-index: 99;
+}
+
+.qx-modal-card {
+  width: min(520px, 92vw);
+  background: #101928;
+  border-radius: 16px;
+  padding: 18px;
+  border: 1px solid #2a3850;
+}
+
+.qx-modal-form { display: grid; gap: 10px; }
+.qx-modal-form input,
+.qx-modal-form textarea {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #30445f;
+  padding: 10px;
+  background: #0c1320;
+  color: #ecf2ff;
+}
+
+.qx-member-picker {
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid #2f415c;
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.qx-member-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.qx-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

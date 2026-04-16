@@ -23,6 +23,9 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
+import CreateGroupModal from "./components/community/CreateGroupModal";
+import CreateChannelModal from "./components/community/CreateChannelModal";
+import { createChannel, createGroup, followChannel, unfollowChannel } from "./services/communityService";
 import {
   deleteObject,
   getDownloadURL,
@@ -88,6 +91,14 @@ function App() {
   const [allUsers, setAllUsers] = useState([]);
   const [conversations, setConversations] = useState({});
   const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [selectedChannel, setSelectedChannel] = useState(null);
+  const [activeThreadType, setActiveThreadType] = useState("direct");
+  const [groups, setGroups] = useState([]);
+  const [followedChannels, setFollowedChannels] = useState([]);
+  const [discoverChannels, setDiscoverChannels] = useState([]);
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [showChannelModal, setShowChannelModal] = useState(false);
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState("");
   const [search, setSearch] = useState("");
@@ -132,6 +143,8 @@ function App() {
       if (!user) {
         setProfile(null);
         setSelectedUser(null);
+        setSelectedGroup(null);
+        setSelectedChannel(null);
         setMessages([]);
         return;
       }
@@ -202,7 +215,26 @@ function App() {
   }, [authUser]);
 
   useEffect(() => {
-    if (!authUser || !selectedUser) return undefined;
+    if (!authUser) return undefined;
+    const q = query(collection(db, "groups"), where("memberIds", "array-contains", authUser.uid));
+    return onSnapshot(q, (snapshot) => {
+      const next = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+      setGroups(next.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+    });
+  }, [authUser]);
+
+  useEffect(() => {
+    if (!authUser) return undefined;
+    const q = query(collection(db, "channels"));
+    return onSnapshot(q, (snapshot) => {
+      const channels = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+      setFollowedChannels(channels.filter((channel) => (channel.followerIds || []).includes(authUser.uid)));
+      setDiscoverChannels(channels.filter((channel) => !(channel.followerIds || []).includes(authUser.uid)));
+    });
+  }, [authUser]);
+
+  useEffect(() => {
+    if (!authUser || !selectedUser || activeThreadType !== "direct") return undefined;
     const conversationId = conversationIdFor(authUser.uid, selectedUser.uid);
     const conversationRef = doc(db, "conversations", conversationId);
     setDoc(conversationRef, { unreadBy: { [authUser.uid]: 0 } }, { merge: true });
@@ -224,7 +256,23 @@ function App() {
         setDoc(conversationRef, { unreadBy: { [authUser.uid]: 0 } }, { merge: true });
       }
     });
-  }, [authUser, selectedUser]);
+  }, [authUser, selectedUser, activeThreadType]);
+
+  useEffect(() => {
+    if (!authUser || !selectedGroup || activeThreadType !== "group") return undefined;
+    const q = query(collection(db, "groups", selectedGroup.id, "messages"), orderBy("createdAt", "asc"));
+    return onSnapshot(q, (snapshot) => {
+      setMessages(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() })));
+    });
+  }, [authUser, selectedGroup, activeThreadType]);
+
+  useEffect(() => {
+    if (!authUser || !selectedChannel || activeThreadType !== "channel") return undefined;
+    const q = query(collection(db, "channels", selectedChannel.id, "posts"), orderBy("createdAt", "asc"));
+    return onSnapshot(q, (snapshot) => {
+      setMessages(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() })));
+    });
+  }, [authUser, selectedChannel, activeThreadType]);
 
   useEffect(() => { setProfileNameInput(profile?.displayName || ""); }, [profile?.displayName]);
   useEffect(() => { if (localVideoRef.current) localVideoRef.current.srcObject = localCallStream || null; }, [localCallStream]);
@@ -260,12 +308,14 @@ function App() {
     return messages.filter((m) => (m.text || "").toLowerCase().includes(value));
   }, [messages, chatSearch]);
 
-  const selectedConversation = authUser && selectedUser ? conversations[conversationIdFor(authUser.uid, selectedUser.uid)] : null;
+  const selectedConversation = activeThreadType === "direct" && authUser && selectedUser ? conversations[conversationIdFor(authUser.uid, selectedUser.uid)] : null;
   const selectedTheme = selectedConversation?.themeBy?.[authUser?.uid] || "default";
   const selectedPartnerTyping = selectedConversation?.typing?.[selectedUser?.uid] || false;
   const selectedMuted = selectedConversation?.mutedBy?.[authUser?.uid] || false;
   const selectedCall = selectedConversation?.callState || null;
-  const selectedConversationId = authUser && selectedUser ? conversationIdFor(authUser.uid, selectedUser.uid) : "";
+  const selectedConversationId = activeThreadType === "direct" && authUser && selectedUser ? conversationIdFor(authUser.uid, selectedUser.uid) : "";
+  const activeThread = activeThreadType === "direct" ? selectedUser : activeThreadType === "group" ? selectedGroup : selectedChannel;
+  const activeThreadName = activeThreadType === "direct" ? selectedUser?.displayName : activeThreadType === "group" ? selectedGroup?.name : selectedChannel?.name;
 
   const totalUnread = useMemo(() => {
     return Object.values(conversations).reduce((acc, conv) => acc + (conv.unreadBy?.[authUser?.uid] || 0), 0);
@@ -374,6 +424,36 @@ function App() {
     setTimeout(() => setContactFeedback(""), 3000);
   };
 
+  const handleCreateGroup = async ({ name, description, memberIds }) => {
+    if (!authUser) return;
+    await createGroup({ name, description, memberIds, creatorId: authUser.uid });
+    setShowGroupModal(false);
+    setStatusText("✓ Group created.");
+  };
+
+  const handleCreateChannel = async ({ name, description }) => {
+    if (!authUser) return;
+    await createChannel({ name, description, creatorId: authUser.uid });
+    setShowChannelModal(false);
+    setStatusText("✓ Channel created.");
+  };
+
+  const toggleFollowChannel = async (channel) => {
+    if (!authUser) return;
+    const isFollowing = (channel.followerIds || []).includes(authUser.uid);
+    if (isFollowing) {
+      await unfollowChannel(channel.id, authUser.uid);
+      if (selectedChannel?.id === channel.id) {
+        setSelectedChannel(null);
+        setMessages([]);
+      }
+      setStatusText(`✓ Unfollowed ${channel.name}`);
+      return;
+    }
+    await followChannel(channel.id, authUser.uid);
+    setStatusText(`✓ Following ${channel.name}`);
+  };
+
   const uploadToStorage = async (path, file) => {
     if (!file) throw new Error("File missing.");
     if (file.size > MAX_FILE_SIZE_BYTES) throw new Error("File is too large. Please upload a file up to 15MB.");
@@ -445,7 +525,7 @@ function App() {
   };
 
   const updateTypingState = async (isTyping) => {
-    if (!authUser || !selectedUser) return;
+    if (!authUser || !selectedUser || activeThreadType !== "direct") return;
     const conversationRef = doc(db, "conversations", conversationIdFor(authUser.uid, selectedUser.uid));
     await setDoc(
       conversationRef,
@@ -459,7 +539,47 @@ function App() {
   };
 
   const sendMessage = async ({ text = "", file = null, forwardedFrom = null } = {}) => {
-    if ((!text.trim() && !file) || !authUser || !selectedUser || !profile) return;
+    if ((!text.trim() && !file) || !authUser || !profile) return;
+
+    if (activeThreadType === "group" && selectedGroup) {
+      await addDoc(collection(db, "groups", selectedGroup.id, "messages"), {
+        text: text.trim(),
+        type: "text",
+        senderId: authUser.uid,
+        senderName: profile.displayName,
+        createdAt: serverTimestamp(),
+      });
+      await setDoc(doc(db, "groups", selectedGroup.id), {
+        lastMessage: text.trim(),
+        lastMessageAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      setMessageInput("");
+      return;
+    }
+
+    if (activeThreadType === "channel" && selectedChannel) {
+      if (selectedChannel.ownerId !== authUser.uid) {
+        setStatusText("Only channel owner can publish posts.");
+        return;
+      }
+      await addDoc(collection(db, "channels", selectedChannel.id, "posts"), {
+        text: text.trim(),
+        type: "post",
+        senderId: authUser.uid,
+        senderName: profile.displayName,
+        createdAt: serverTimestamp(),
+      });
+      await setDoc(doc(db, "channels", selectedChannel.id), {
+        lastPost: text.trim(),
+        lastPostAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      setMessageInput("");
+      return;
+    }
+
+    if (!selectedUser) return;
 
     const conversationId = conversationIdFor(authUser.uid, selectedUser.uid);
     const conversationRef = doc(db, "conversations", conversationId);
@@ -531,6 +651,7 @@ function App() {
 
   const onMessageChange = async (value) => {
     setMessageInput(value);
+    if (activeThreadType !== "direct") return;
     if (!value.trim()) { updateTypingState(false); return; }
     await updateTypingState(true);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -776,55 +897,106 @@ function App() {
           {search && <button type="button" className="qx-search-clear" onClick={() => setSearch("")}>✕</button>}
         </div>
 
-        {/* Contact list */}
-        <div className="qx-contact-list">
-          {filteredUsers.length === 0 && (
-            <div className="qx-empty-contacts">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="36" height="36"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-              <p>No contacts found</p>
-              <span>Add contacts via phone number above</span>
-            </div>
-          )}
-          {filteredUsers.map((user) => {
-            const conversationId = conversationIdFor(authUser.uid, user.uid);
-            const conv = conversations[conversationId];
-            const unreadCount = conv?.unreadBy?.[authUser.uid] || 0;
-            const isActive = selectedUser?.uid === user.uid;
-            const initials = (user.displayName || "U").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
-            return (
-              <button key={user.uid} type="button"
-                className={`qx-contact-tile ${isActive ? "qx-contact-tile--active" : ""}`}
-                onClick={() => { setSelectedUser(user); setShowMobileSidebar(false); }}
+        {/* Contacts / Groups / Channels */}
+        <div className="qx-community-actions">
+          <button type="button" className="qx-btn" onClick={() => setShowGroupModal(true)}>+ Group</button>
+          <button type="button" className="qx-btn" onClick={() => setShowChannelModal(true)}>+ Channel</button>
+        </div>
+
+        <div className="qx-list-section">
+          <h4>Direct Messages</h4>
+          <div className="qx-contact-list">
+            {filteredUsers.map((user) => {
+              const conversationId = conversationIdFor(authUser.uid, user.uid);
+              const conv = conversations[conversationId];
+              const unreadCount = conv?.unreadBy?.[authUser.uid] || 0;
+              const isActive = activeThreadType === "direct" && selectedUser?.uid === user.uid;
+              const initials = (user.displayName || "U").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+              return (
+                <button key={user.uid} type="button"
+                  className={`qx-contact-tile ${isActive ? "qx-contact-tile--active" : ""}`}
+                  onClick={() => {
+                    setActiveThreadType("direct");
+                    setSelectedUser(user);
+                    setSelectedGroup(null);
+                    setSelectedChannel(null);
+                    setShowMobileSidebar(false);
+                  }}
+                >
+                  <div className="qx-contact-avatar">{user.photoURL ? <img src={user.photoURL} alt={user.displayName} /> : <span>{initials}</span>}</div>
+                  <div className="qx-contact-info">
+                    <div className="qx-contact-top"><strong>{user.displayName || "Unknown"}</strong><span className="qx-contact-time">{formatTime(conv?.lastMessageAt)}</span></div>
+                    <div className="qx-contact-bottom"><span className="qx-contact-preview">{conv?.lastMessage || user.phoneNumber || user.email || "No messages yet"}</span>{unreadCount > 0 && <span className="qx-unread-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="qx-list-section">
+          <h4>Groups</h4>
+          <div className="qx-contact-list">
+            {groups.map((group) => (
+              <button
+                key={group.id}
+                type="button"
+                className={`qx-contact-tile ${activeThreadType === "group" && selectedGroup?.id === group.id ? "qx-contact-tile--active" : ""}`}
+                onClick={() => {
+                  setActiveThreadType("group");
+                  setSelectedGroup(group);
+                  setSelectedUser(null);
+                  setSelectedChannel(null);
+                }}
               >
-                <div className="qx-contact-avatar">
-                  {user.photoURL
-                    ? <img src={user.photoURL} alt={user.displayName} />
-                    : <span>{initials}</span>
-                  }
-                  <span className={`qx-presence ${user.isOnline ? "qx-presence--online" : "qx-presence--offline"}`} />
-                </div>
+                <div className="qx-contact-avatar"><span>👥</span></div>
                 <div className="qx-contact-info">
-                  <div className="qx-contact-top">
-                    <strong>{user.displayName || "Unknown"}</strong>
-                    <span className="qx-contact-time">{formatTime(conv?.lastMessageAt)}</span>
-                  </div>
-                  <div className="qx-contact-bottom">
-                    <span className="qx-contact-preview">
-                      {conv?.lastMessageSender === authUser.uid && <span className="qx-sent-tick">✓ </span>}
-                      {conv?.lastMessage || user.phoneNumber || user.email || "No messages yet"}
-                    </span>
-                    {unreadCount > 0 && <span className="qx-unread-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
-                  </div>
+                  <div className="qx-contact-top"><strong>{group.name}</strong><span className="qx-contact-time">{formatTime(group.lastMessageAt)}</span></div>
+                  <div className="qx-contact-bottom"><span className="qx-contact-preview">{group.lastMessage || group.description || "No messages yet"}</span></div>
                 </div>
               </button>
-            );
-          })}
+            ))}
+          </div>
+        </div>
+
+        <div className="qx-list-section">
+          <h4>Channels</h4>
+          <div className="qx-contact-list">
+            {followedChannels.map((channel) => (
+              <button
+                key={channel.id}
+                type="button"
+                className={`qx-contact-tile ${activeThreadType === "channel" && selectedChannel?.id === channel.id ? "qx-contact-tile--active" : ""}`}
+                onClick={() => {
+                  setActiveThreadType("channel");
+                  setSelectedChannel(channel);
+                  setSelectedUser(null);
+                  setSelectedGroup(null);
+                }}
+              >
+                <div className="qx-contact-avatar"><span>📣</span></div>
+                <div className="qx-contact-info">
+                  <div className="qx-contact-top"><strong>{channel.name}</strong><span className="qx-contact-time">{(channel.followerIds || []).length} followers</span></div>
+                  <div className="qx-contact-bottom"><span className="qx-contact-preview">{channel.lastPost || channel.description || "No posts yet"}</span></div>
+                </div>
+              </button>
+            ))}
+            {discoverChannels.map((channel) => (
+              <div key={channel.id} className="qx-channel-discover">
+                <div>
+                  <strong>{channel.name}</strong>
+                  <p>{channel.description || "No description"}</p>
+                </div>
+                <button type="button" className="qx-btn qx-btn--primary" onClick={() => toggleFollowChannel(channel)}>Follow</button>
+              </div>
+            ))}
+          </div>
         </div>
       </aside>
 
       {/* ── MAIN CHAT ── */}
       <main className="qx-main">
-        {!selectedUser ? (
+        {!activeThread ? (
           <div className="qx-welcome">
             <div className="qx-welcome-graphic">
               <div className="qx-welcome-orb">
@@ -846,23 +1018,23 @@ function App() {
           <>
             {/* Chat header */}
             <header className="qx-chat-header">
-              <button type="button" className="qx-mobile-back" onClick={() => { setSelectedUser(null); setShowMobileSidebar(true); }}>
+              <button type="button" className="qx-mobile-back" onClick={() => { setSelectedUser(null); setSelectedGroup(null); setSelectedChannel(null); setShowMobileSidebar(true); }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
               </button>
               <div className="qx-chat-contact-avatar">
-                {selectedUser.photoURL
+                {activeThreadType === "direct" && selectedUser?.photoURL
                   ? <img src={selectedUser.photoURL} alt={selectedUser.displayName} />
-                  : <span>{(selectedUser.displayName || "U").charAt(0).toUpperCase()}</span>
+                  : <span>{activeThreadType === "group" ? "👥" : activeThreadType === "channel" ? "📣" : (selectedUser?.displayName || "U").charAt(0).toUpperCase()}</span>
                 }
-                <span className={`qx-presence ${selectedUser.isOnline ? "qx-presence--online" : "qx-presence--offline"}`} />
+                {activeThreadType === "direct" && <span className={`qx-presence ${selectedUser?.isOnline ? "qx-presence--online" : "qx-presence--offline"}`} />}
               </div>
               <div className="qx-chat-contact-meta">
-                <h3>{selectedUser.displayName}</h3>
-                <span className={selectedUser.isOnline ? "qx-online-label" : "qx-offline-label"}>
-                  {selectedUser.isOnline ? "● Online" : "○ Offline"}
+                <h3>{activeThreadName}</h3>
+                <span className={activeThreadType === "direct" && selectedUser?.isOnline ? "qx-online-label" : "qx-offline-label"}>
+                  {activeThreadType === "group" ? `${(selectedGroup?.memberIds || []).length} members` : activeThreadType === "channel" ? `${(selectedChannel?.followerIds || []).length} followers` : selectedUser?.isOnline ? "● Online" : "○ Offline"}
                 </span>
               </div>
-              <div className="qx-chat-actions">
+              {activeThreadType === "direct" ? <div className="qx-chat-actions">
                 <button type="button" className="qx-icon-btn" title="Voice call" onClick={() => startCall("audio")}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 012 1.22 2 2 0 014 .04h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
                 </button>
@@ -883,7 +1055,7 @@ function App() {
                 <button type="button" className="qx-icon-btn qx-icon-btn--danger" title="Clear history" onClick={deleteChatHistory}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
                 </button>
-              </div>
+              </div> : <div className="qx-chat-actions"><span className="qx-encryption-badge">Community thread</span>{activeThreadType === "channel" && <button type="button" className="qx-btn" onClick={() => toggleFollowChannel(selectedChannel)}>{(selectedChannel?.followerIds || []).includes(authUser.uid) ? "Unfollow" : "Follow"}</button>}</div>}
             </header>
 
             {/* Chat search */}
@@ -900,7 +1072,7 @@ function App() {
             </div>
 
             {/* Call banner */}
-            {selectedCall && selectedCall.status !== "ended" && (
+            {activeThreadType === "direct" && selectedCall && selectedCall.status !== "ended" && (
               <div className={`qx-call-banner qx-call-banner--${selectedCall.status}`}>
                 <div className="qx-call-info">
                   <div className="qx-call-icon">{selectedCall.type === "video" ? "🎥" : "📞"}</div>
@@ -919,7 +1091,7 @@ function App() {
             )}
 
             {/* Video panels */}
-            {(localCallStream || remoteCallStream) && (
+            {activeThreadType === "direct" && (localCallStream || remoteCallStream) && (
               <div className="qx-call-media">
                 <div className="qx-video-wrap">
                   <video ref={remoteVideoRef} autoPlay playsInline className="qx-video-main" />
@@ -940,7 +1112,7 @@ function App() {
                 const isMine = msg.senderId === authUser.uid;
                 const prevMsg = visibleMessages[index - 1];
                 const showDate = !prevMsg || formatDate(msg.createdAt) !== formatDate(prevMsg?.createdAt);
-                const isRead = (msg.readBy || []).includes(selectedUser.uid);
+                const isRead = selectedUser ? (msg.readBy || []).includes(selectedUser.uid) : false;
                 return (
                   <div key={msg.id}>
                     {showDate && (
@@ -951,9 +1123,9 @@ function App() {
                     <div className={`qx-msg-row ${isMine ? "qx-msg-row--mine" : "qx-msg-row--theirs"}`}>
                       {!isMine && (
                         <div className="qx-msg-avatar">
-                          {selectedUser.photoURL
+                          {activeThreadType === "direct" && selectedUser?.photoURL
                             ? <img src={selectedUser.photoURL} alt={selectedUser.displayName} />
-                            : <span>{(selectedUser.displayName || "U").charAt(0).toUpperCase()}</span>
+                            : <span>{activeThreadType === "group" ? "👥" : activeThreadType === "channel" ? "📣" : (selectedUser?.displayName || "U").charAt(0).toUpperCase()}</span>
                           }
                         </div>
                       )}
@@ -961,7 +1133,7 @@ function App() {
                         {msg.replyTo && (
                           <div className="qx-reply-preview">
                             <span className="qx-reply-bar" />
-                            <span>{msg.replyTo.senderId === authUser.uid ? "You" : selectedUser.displayName}: {msg.replyTo.text?.slice(0, 80)}</span>
+                            <span>{msg.replyTo.senderId === authUser.uid ? "You" : activeThreadName}: {msg.replyTo.text?.slice(0, 80)}</span>
                           </div>
                         )}
                         <div className={`qx-bubble ${isMine ? "qx-bubble--mine" : "qx-bubble--theirs"}`}>
@@ -995,15 +1167,15 @@ function App() {
                             )}
                           </div>
                         </div>
-                        <div className="qx-msg-actions">
+                        {activeThreadType === "direct" && <div className="qx-msg-actions">
                           <button type="button" className="qx-msg-action-btn" title="Reply" onClick={() => setReplyTo(msg)}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 00-4-4H4"/></svg>
                           </button>
                           <button type="button" className="qx-msg-action-btn" title="Forward" onClick={() => setForwardOpenFor(forwardOpenFor === msg.id ? null : msg.id)}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 014-4h12"/></svg>
                           </button>
-                        </div>
-                        {forwardOpenFor === msg.id && (
+                        </div>}
+                        {activeThreadType === "direct" && forwardOpenFor === msg.id && (
                           <div className="qx-forward-panel">
                             <p className="qx-forward-label">Forward to:</p>
                             {contacts.filter((c) => c.uid !== selectedUser.uid).map((c) => (
@@ -1024,10 +1196,10 @@ function App() {
 
             {/* Typing indicator */}
             <div className="qx-typing-row">
-              {selectedPartnerTyping && (
+              {activeThreadType === "direct" && selectedPartnerTyping && (
                 <div className="qx-typing-indicator">
                   <div className="qx-typing-dots"><span /><span /><span /></div>
-                  <span>{selectedUser.displayName} is typing...</span>
+                  <span>{selectedUser?.displayName} is typing...</span>
                 </div>
               )}
             </div>
@@ -1038,7 +1210,7 @@ function App() {
                 <div className="qx-reply-preview-bar">
                   <span className="qx-reply-accent" />
                   <div>
-                    <span className="qx-reply-to-name">{replyTo.senderId === authUser.uid ? "You" : selectedUser.displayName}</span>
+                    <span className="qx-reply-to-name">{replyTo.senderId === authUser.uid ? "You" : activeThreadName}</span>
                     <span className="qx-reply-to-text">{replyTo.text?.slice(0, 100)}</span>
                   </div>
                 </div>
@@ -1106,6 +1278,18 @@ function App() {
           </>
         )}
       </main>
+
+      <CreateGroupModal
+        open={showGroupModal}
+        contacts={contacts}
+        onClose={() => setShowGroupModal(false)}
+        onCreate={handleCreateGroup}
+      />
+      <CreateChannelModal
+        open={showChannelModal}
+        onClose={() => setShowChannelModal(false)}
+        onCreate={handleCreateChannel}
+      />
 
       {/* Mobile overlay */}
       {showMobileSidebar && <div className="qx-overlay" onClick={() => setShowMobileSidebar(false)} />}
