@@ -59,6 +59,7 @@ const Sidebar = ({
   onCreateGroup,
   onCreateChannel,
   onToggleFollowChannel,
+  onLogout,
   showMobileSidebar,
 }) => {
   const [filter, setFilter] = useState("All");
@@ -237,6 +238,15 @@ const Sidebar = ({
                     <circle cx="12" cy="12" r="3"/>
                   </svg>
                   Mark all as read
+                </button>
+
+<button type="button" className="wa-menu-item" onClick={() => { onLogout?.(); setShowMenu(false); }}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+                    <polyline points="16 17 21 12 16 7"/>
+                    <line x1="21" y1="12" x2="9" y2="12"/>
+                  </svg>
+                  Sign Out
                 </button>
                 <button type="button" className="wa-menu-item" onClick={onToggleTheme}>
                   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">

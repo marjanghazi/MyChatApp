@@ -411,10 +411,19 @@ function App() {
   };
 
   const logout = async () => {
-    if (authUser) {
-      await updateDoc(doc(db, "users", authUser.uid), { isOnline: false, lastSeen: serverTimestamp(), activeAt: serverTimestamp() });
+     try {
+      if (authUser) {
+        await updateDoc(doc(db, "users", authUser.uid), {
+          isOnline: false,
+          lastSeen: serverTimestamp(),
+          activeAt: serverTimestamp(),
+        });
+      }
+    } catch (error) {
+      console.warn("Failed to update online status during logout:", error);
+    } finally {
+      await signOut(auth);
     }
-    await signOut(auth);
   };
 
   // ─── Boot loader ───────────────────────────────────────────────────────────
@@ -517,6 +526,7 @@ function App() {
         onCreateGroup={() => setShowGroupModal(true)}
         onCreateChannel={() => setShowChannelModal(true)}
         onToggleFollowChannel={toggleFollowChannel}
+        onLogout={logout}
         showMobileSidebar={showMobileSidebar}
       />
 
