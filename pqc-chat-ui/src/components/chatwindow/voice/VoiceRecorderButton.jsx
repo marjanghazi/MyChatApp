@@ -95,9 +95,13 @@ function VoiceRecorderButton({ disabled, onVoiceRecorded, onStatusChange }) {
       const voiceFile = new File([pendingVoiceBlob], `voice-${Date.now()}.${ext}`, { type: mimeType });
       onStatusChange?.("Uploading voice note...");
       const sent = await onVoiceRecorded?.(voiceFile);
-      if (!sent) return;
+      if (!sent) {
+        onStatusChange?.("Voice note failed to send.");
+        return;
+      }
       setPendingVoiceBlob(null);
       onStatusChange?.("Voice note sent.");
+      setTimeout(() => onStatusChange?.(""), 1800);
     } catch {
       onStatusChange?.("Failed to send voice note.");
     } finally {

@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 import VoiceRecorderButton from "./voice/VoiceRecorderButton";
+import AttachmentPickerMenu from "./media/AttachmentPickerMenu";
+import MediaPreviewOverlay from "./media/MediaPreviewOverlay";
 import "./ChatComposer.css";
 
 function ChatComposer({
@@ -33,6 +35,13 @@ function ChatComposer({
 }) {
   const emojiButtonRef = useRef(null);
   const [emojiPickerPos, setEmojiPickerPos] = useState(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [pendingMedia, setPendingMedia] = useState(null);
+
+  const documentInputRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const videoInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
 
   useEffect(() => {
     if (!showEmojiPicker) return undefined;
@@ -52,6 +61,17 @@ function ChatComposer({
       window.removeEventListener("scroll", updateEmojiPosition, true);
     };
   }, [showEmojiPicker, setShowEmojiPicker]);
+
+  const onPickedFile = (file, source) => {
+    if (!file) return;
+    setPendingMedia({ file, source });
+    setShowAttachMenu(false);
+  };
+
+  const triggerInput = (inputRef) => {
+    setShowAttachMenu(false);
+    inputRef.current?.click();
+  };
 
   return (
   <>
@@ -91,19 +111,57 @@ function ChatComposer({
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
           </button>
-          <label htmlFor="attachment" className="qx-composer-btn" title="Attach media / file">
+          <button
+            type="button"
+            className="qx-composer-btn"
+            title="Attach"
+            onClick={() => setShowAttachMenu(true)}
+          >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-          </label>
+          </button>
+
           <input
-            id="attachment" type="file" hidden
-            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip"
-            onChange={(e) => {
-              if (e.target.files?.[0]) {
-                sendMessage({ file: e.target.files[0] });
-                e.target.value = "";
-              }
+            ref={documentInputRef}
+            type="file"
+            hidden
+            accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip"
+            onChange={(event) => {
+              onPickedFile(event.target.files?.[0], "document");
+              event.target.value = "";
             }}
           />
+          <input
+            ref={imageInputRef}
+            type="file"
+            hidden
+            accept="image/*"
+            onChange={(event) => {
+              onPickedFile(event.target.files?.[0], "image");
+              event.target.value = "";
+            }}
+          />
+          <input
+            ref={videoInputRef}
+            type="file"
+            hidden
+            accept="video/*"
+            onChange={(event) => {
+              onPickedFile(event.target.files?.[0], "video");
+              event.target.value = "";
+            }}
+          />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            hidden
+            accept="image/*"
+            capture="environment"
+            onChange={(event) => {
+              onPickedFile(event.target.files?.[0], "camera");
+              event.target.value = "";
+            }}
+          />
+
           <VoiceRecorderButton
             disabled={sendingAttachment}
             onVoiceRecorded={(voiceFile) => sendMessage({ file: voiceFile })}
@@ -176,6 +234,30 @@ function ChatComposer({
         </div>
       )}
     </footer>
+
+    <AttachmentPickerMenu
+      open={showAttachMenu}
+      onClose={() => setShowAttachMenu(false)}
+      onPickDocument={() => triggerInput(documentInputRef)}
+      onPickImage={() => triggerInput(imageInputRef)}
+      onPickVideo={() => triggerInput(videoInputRef)}
+      onPickCamera={() => triggerInput(cameraInputRef)}
+    />
+
+    <MediaPreviewOverlay
+      pendingMedia={pendingMedia}
+      onClose={() => setPendingMedia(null)}
+      onSend={async () => {
+        if (!pendingMedia?.file) return;
+        const sent = await sendMessage({ file: pendingMedia.file });
+        if (sent) {
+          setPendingMedia(null);
+          setStatusText("Media sent.");
+          setTimeout(() => setStatusText(""), 1800);
+        }
+      }}
+      sendingAttachment={sendingAttachment}
+    />
 
     {imagePreview && (
       <div className="qx-lightbox" onClick={() => setImagePreview(null)}>

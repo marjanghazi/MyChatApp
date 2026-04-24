@@ -1,0 +1,56 @@
+.qx-media-preview-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  flex-direction: column;
+  background: rgba(3, 6, 18, 0.96);
+}
+
+.qx-media-preview-header {
+  height: 56px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.qx-media-preview-btn {
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.92);
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.qx-media-preview-btn--send {
+  background: rgba(77, 127, 255, 0.3);
+}
+
+.qx-media-preview-body {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.qx-media-preview-image,
+.qx-media-preview-video {
+  width: min(100%, 880px);
+  max-height: calc(100vh - 150px);
+  border-radius: 14px;
+  object-fit: contain;
+}
+
+.qx-media-preview-doc {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.qx-media-preview-doc-icon {
+  font-size: 58px;
+  margin-bottom: 12px;
+}
