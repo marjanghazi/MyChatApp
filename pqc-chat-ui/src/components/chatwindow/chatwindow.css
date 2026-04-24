@@ -930,9 +930,10 @@
   grid-template-columns: repeat(6, 1fr);
   gap: 6px;
   box-shadow: var(--shadow-lg), var(--shadow-glow);
-  z-index: 50;
+  z-index: 3000;
   backdrop-filter: blur(20px);
   animation: qx-fade-up 0.2s ease;
+  pointer-events: auto;
 }
 
 .qx-emoji-picker button {
@@ -946,6 +947,7 @@
   align-items: center;
   justify-content: center;
   transition: all 0.15s ease;
+  cursor: pointer;
 }
 
 .qx-emoji-picker button:hover {

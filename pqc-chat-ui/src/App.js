@@ -13,6 +13,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   increment,
   onSnapshot,
@@ -213,6 +214,16 @@ function App() {
 
   useEffect(() => { setProfileNameInput(profile?.displayName || ""); }, [profile?.displayName]);
   useEffect(() => { setShowGroupDetails(false); }, [selectedGroup?.id, activeThreadType]);
+  useEffect(() => {
+    if (!selectedGroup?.id) return;
+    const refreshedGroup = groups.find((entry) => entry.id === selectedGroup.id);
+    if (!refreshedGroup) {
+      setShowGroupDetails(false);
+      setSelectedGroup(null);
+      return;
+    }
+    if (refreshedGroup !== selectedGroup) setSelectedGroup(refreshedGroup);
+  }, [groups, selectedGroup]);
 
   // ── Contacts ──────────────────────────────────────────────────────────────
   const contacts = useMemo(() => {
@@ -359,6 +370,11 @@ function App() {
     if (!authUser || activeThreadType !== "group" || !selectedGroup) return;
     const confirmed = window.confirm(`Leave ${selectedGroup.name}?`);
     if (!confirmed) return;
+    const groupSnap = await getDoc(doc(db, "groups", selectedGroup.id));
+    if (!groupSnap.exists()) {
+      setStatusText("Group no longer exists.");
+      return;
+    }
     await updateDoc(doc(db, "groups", selectedGroup.id), {
       memberIds: arrayRemove(authUser.uid),
       admins: arrayRemove(authUser.uid),
@@ -371,8 +387,17 @@ function App() {
 
   const addGroupMember = async (memberUid) => {
     if (!selectedGroup?.id || !memberUid) return;
-    const isGroupAdmin = !!selectedGroup.admins?.includes(authUser?.uid);
-    if (!isGroupAdmin) return;
+    const groupSnap = await getDoc(doc(db, "groups", selectedGroup.id));
+    if (!groupSnap.exists()) {
+      setStatusText("Group not found.");
+      return;
+    }
+    const groupData = groupSnap.data();
+    const isGroupAdmin = !!groupData.admins?.includes(authUser?.uid);
+    if (!isGroupAdmin) {
+      setStatusText("Only admins can add members.");
+      return;
+    }
     try {
       await updateDoc(doc(db, "groups", selectedGroup.id), {
         memberIds: arrayUnion(memberUid),
@@ -386,9 +411,18 @@ function App() {
 
   const toggleGroupAdmin = async (memberUid, makeAdmin) => {
     if (!selectedGroup?.id || !memberUid) return;
-    const isGroupAdmin = !!selectedGroup.admins?.includes(authUser?.uid);
-    if (!isGroupAdmin) return;
-    if (!makeAdmin && memberUid === selectedGroup.createdBy) {
+    const groupSnap = await getDoc(doc(db, "groups", selectedGroup.id));
+    if (!groupSnap.exists()) {
+      setStatusText("Group not found.");
+      return;
+    }
+    const groupData = groupSnap.data();
+    const isGroupAdmin = !!groupData.admins?.includes(authUser?.uid);
+    if (!isGroupAdmin) {
+      setStatusText("Only admins can update admin rights.");
+      return;
+    }
+    if (!makeAdmin && memberUid === groupData.createdBy) {
       setStatusText("Group creator must remain an admin.");
       return;
     }
@@ -405,13 +439,22 @@ function App() {
 
   const removeGroupMember = async (memberUid) => {
     if (!selectedGroup?.id || !memberUid) return;
-    const isGroupAdmin = !!selectedGroup.admins?.includes(authUser?.uid);
-    if (!isGroupAdmin) return;
+    const groupSnap = await getDoc(doc(db, "groups", selectedGroup.id));
+    if (!groupSnap.exists()) {
+      setStatusText("Group not found.");
+      return;
+    }
+    const groupData = groupSnap.data();
+    const isGroupAdmin = !!groupData.admins?.includes(authUser?.uid);
+    if (!isGroupAdmin) {
+      setStatusText("Only admins can remove members.");
+      return;
+    }
     if (memberUid === authUser?.uid) {
       setStatusText("Use Leave Group to remove yourself.");
       return;
     }
-    if (memberUid === selectedGroup.createdBy) {
+    if (memberUid === groupData.createdBy) {
       setStatusText("Group creator cannot be removed.");
       return;
     }
