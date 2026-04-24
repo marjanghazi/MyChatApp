@@ -211,10 +211,17 @@ const ChatWindow = ({
         return d.receiverId === authUser.uid && !(d.readBy || []).includes(authUser.uid);
       });
       unread.forEach((e) =>
-        updateDoc(e.ref, { readBy: arrayUnion(authUser.uid), readAt: serverTimestamp() })
+        updateDoc(e.ref, {
+          deliveredTo: arrayUnion(authUser.uid),
+          readBy: arrayUnion(authUser.uid),
+          readAt: serverTimestamp(),
+        })
       );
       if (unread.length) {
-        setDoc(conversationRef, { unreadBy: { [authUser.uid]: 0 } }, { merge: true });
+        setDoc(conversationRef, {
+          unreadBy: { [authUser.uid]: 0 },
+          lastMessageStatus: "seen",
+        }, { merge: true });
       }
     });
     return unsubscribe;
@@ -755,6 +762,7 @@ const ChatWindow = ({
           lastMessage:         payload.type === "text" ? payload.text : `📎 ${payload.fileName}`,
           lastMessageType:     payload.type,
           lastMessageSender:   authUser.uid,
+          lastMessageStatus:   selectedUser?.isOnline ? "delivered" : "sent",
           lastMessageAt:       serverTimestamp(),
           typing:              { [authUser.uid]: false },
           unreadBy:            { [authUser.uid]: 0, [selectedUser.uid]: increment(1) },
@@ -767,6 +775,7 @@ const ChatWindow = ({
           senderId:   authUser.uid,
           receiverId: selectedUser.uid,
           createdAt:  serverTimestamp(),
+          deliveredTo: [authUser.uid, ...(selectedUser?.isOnline ? [selectedUser.uid] : [])],
           readBy:     [authUser.uid],
         });
 
@@ -793,6 +802,7 @@ const ChatWindow = ({
         lastMessage: payload.type === "text" ? payload.text : `📎 ${payload.fileName || "attachment"}`,
         lastMessageType: payload.type,
         lastMessageSender: authUser.uid,
+        lastMessageStatus: targetUser?.isOnline ? "delivered" : "sent",
         lastMessageAt: serverTimestamp(),
         unreadBy: { [authUser.uid]: 0, [targetUser.uid]: increment(1) },
       },
@@ -803,6 +813,7 @@ const ChatWindow = ({
       senderId: authUser.uid,
       receiverId: targetUser.uid,
       createdAt: serverTimestamp(),
+      deliveredTo: [authUser.uid, ...(targetUser?.isOnline ? [targetUser.uid] : [])],
       readBy: [authUser.uid],
     });
   };

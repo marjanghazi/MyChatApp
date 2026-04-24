@@ -40,6 +40,7 @@ const ChatMessages = ({
       const prevMsg  = visibleMessages[index - 1];
       const showDate = !prevMsg || formatDate(msg.createdAt) !== formatDate(prevMsg?.createdAt);
       const isRead   = selectedUser ? (msg.readBy || []).includes(selectedUser.uid) : false;
+      const isDelivered = selectedUser ? (msg.deliveredTo || []).includes(selectedUser.uid) : false;
       const senderName = msg.senderName || usersById.get(msg.senderId)?.displayName || "Member";
 
       return (
@@ -167,7 +168,7 @@ const ChatMessages = ({
                     {(msg.pinnedBy || []).includes(authUser.uid) && <span className="qx-msg-flag">📌</span>}
                     {isMine && (
                       <span className={`qx-read-receipt ${isRead ? "qx-read-receipt--read" : ""}`}>
-                        {isRead ? "✓✓" : "✓"}
+                        {isRead ? "✓✓" : isDelivered ? "✓✓" : "✓"}
                       </span>
                     )}
                   </div>

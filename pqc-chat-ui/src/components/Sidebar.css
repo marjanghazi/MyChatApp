@@ -626,6 +626,23 @@
   font-family: 'Inter', sans-serif;
 }
 
+.wa-preview-text--typing {
+  color: var(--success);
+  font-style: italic;
+}
+
+.wa-msg-tick {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-muted);
+  min-width: 18px;
+  flex-shrink: 0;
+}
+
+.wa-msg-tick--seen {
+  color: #31a6ff;
+}
+
 .wa-muted-icon {
   font-size: 11px;
   flex-shrink: 0;

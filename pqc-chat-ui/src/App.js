@@ -192,6 +192,21 @@ function App() {
     });
   }, [authUser]);
 
+  useEffect(() => {
+    if (!authUser?.uid) return;
+    const pendingDeliveries = Object.entries(conversations).filter(([, conv]) =>
+      conv?.lastMessageSender &&
+      conv.lastMessageSender !== authUser.uid &&
+      conv.lastMessageStatus === "sent"
+    );
+    pendingDeliveries.forEach(([conversationId]) => {
+      updateDoc(doc(db, "conversations", conversationId), {
+        lastMessageStatus: "delivered",
+        updatedAt: serverTimestamp(),
+      }).catch(() => {});
+    });
+  }, [conversations, authUser?.uid]);
+
   // ── Groups ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!authUser) return undefined;

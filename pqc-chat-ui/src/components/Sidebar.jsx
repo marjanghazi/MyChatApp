@@ -16,6 +16,12 @@ const formatTime = (dateValue) => {
 
 const conversationIdFor = (uidA, uidB) => [uidA, uidB].sort().join("_");
 
+const renderStatusTick = (status) => {
+  if (status === "seen") return <span className="wa-msg-tick wa-msg-tick--seen">✓✓</span>;
+  if (status === "delivered") return <span className="wa-msg-tick">✓✓</span>;
+  return <span className="wa-msg-tick">✓</span>;
+};
+
 const Avatar = ({ name, photoURL, icon, color, size = 49 }) => {
   const initials = (name || "U").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   const bg = color || "var(--accent-a)";
@@ -86,6 +92,7 @@ const Sidebar = ({
         const unread = conv?.unreadBy?.[authUser.uid] || 0;
         const preview = conv?.lastMessage || user.phoneNumber || user.email || "No messages yet";
         const name = user.displayName || "Unknown";
+        const isTyping = !!conv?.typing?.[user.uid];
         
         // Filter by unread
         if (filter === "Unread" && unread === 0) return;
@@ -100,6 +107,7 @@ const Sidebar = ({
           unread,
           name,
           preview,
+          isTyping,
           time: conv?.lastMessageAt,
           isActive: activeThreadType === "direct" && selectedUser?.uid === user.uid,
           isOnline: user.isOnline,
@@ -403,12 +411,12 @@ const Sidebar = ({
                   </div>
                   <div className="wa-chat-preview">
                     {item.conv?.lastMessageSender === authUser.uid && (
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: 2 }}>
-                        <polyline points="20 6 9 17 4 12"/>
-                      </svg>
+                      renderStatusTick(item.conv?.lastMessageStatus)
                     )}
                     {item.isMuted && <span className="wa-muted-icon">🔇</span>}
-                    <span className="wa-preview-text">{item.preview}</span>
+                    <span className={`wa-preview-text ${item.isTyping ? "wa-preview-text--typing" : ""}`}>
+                      {item.isTyping ? "typing…" : item.preview}
+                    </span>
                     {item.unread > 0 && (
                       <span className="wa-unread-badge">{item.unread > 99 ? "99+" : item.unread}</span>
                     )}
@@ -452,12 +460,12 @@ const Sidebar = ({
                   </div>
                   <div className="wa-chat-preview">
                     {item.type === "direct" && item.conv?.lastMessageSender === authUser.uid && (
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: 2 }}>
-                        <polyline points="20 6 9 17 4 12"/>
-                      </svg>
+                      renderStatusTick(item.conv?.lastMessageStatus)
                     )}
                     {item.type === "direct" && item.isMuted && <span className="wa-muted-icon">🔇</span>}
-                    <span className="wa-preview-text">{item.preview}</span>
+                    <span className={`wa-preview-text ${item.isTyping ? "wa-preview-text--typing" : ""}`}>
+                      {item.isTyping ? "typing…" : item.preview}
+                    </span>
                     {item.type === "direct" && item.unread > 0 && (
                       <span className="wa-unread-badge">{item.unread > 99 ? "99+" : item.unread}</span>
                     )}
