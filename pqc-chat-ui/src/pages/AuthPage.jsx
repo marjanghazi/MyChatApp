@@ -96,8 +96,8 @@ function AuthPage({
             <h2>{authMode === 'login' ? 'Welcome Back' : 'Create Account'}</h2>
             <p>
               {authMode === 'login'
-                ? '// Sign in to your secure session'
-                : '// Register to get quantum-safe access'}
+                ? ' Sign in to your secure session'
+                : ' Register to get quantum-safe access'}
             </p>
           </div>
 
