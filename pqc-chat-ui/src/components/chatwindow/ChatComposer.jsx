@@ -5,7 +5,7 @@ import data from "@emoji-mart/data";
 import VoiceRecorderButton from "./voice/VoiceRecorderButton";
 import "./ChatComposer.css";
 
-const ChatComposer = ({
+function ChatComposer({
   activeThreadType,
   selectedPartnerTyping,
   selectedUser,
@@ -30,7 +30,7 @@ const ChatComposer = ({
   setImagePreview,
   statusText,
   setStatusText,
-}) => {
+}) {
   const emojiButtonRef = useRef(null);
   const [emojiPickerPos, setEmojiPickerPos] = useState(null);
 
@@ -187,6 +187,6 @@ const ChatComposer = ({
     {statusText && <div className="qx-status-toast">{statusText}</div>}
   </>
   );
-};
+}
 
 export default ChatComposer;

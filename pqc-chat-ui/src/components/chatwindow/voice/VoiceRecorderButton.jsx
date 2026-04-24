@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./VoiceRecorderButton.css";
 
-const VoiceRecorderButton = ({ disabled, onVoiceRecorded, onStatusChange }) => {
+function VoiceRecorderButton({ disabled, onVoiceRecorded, onStatusChange }) {
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
   const chunksRef = useRef([]);
@@ -153,6 +153,6 @@ const VoiceRecorderButton = ({ disabled, onVoiceRecorded, onStatusChange }) => {
       )}
     </div>
   );
-};
+}
 
 export default VoiceRecorderButton;
