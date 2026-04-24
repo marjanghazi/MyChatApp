@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
+import VoiceRecorderButton from "./voice/VoiceRecorderButton";
 import "./ChatComposer.css";
 
 const ChatComposer = ({
@@ -28,6 +29,7 @@ const ChatComposer = ({
   imagePreview,
   setImagePreview,
   statusText,
+  setStatusText,
 }) => {
   const emojiButtonRef = useRef(null);
   const [emojiPickerPos, setEmojiPickerPos] = useState(null);
@@ -89,18 +91,23 @@ const ChatComposer = ({
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
           </button>
-          <label htmlFor="attachment" className="qx-composer-btn" title="Attach file">
+          <label htmlFor="attachment" className="qx-composer-btn" title="Attach media / file">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
           </label>
           <input
             id="attachment" type="file" hidden
-            accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip"
+            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip"
             onChange={(e) => {
               if (e.target.files?.[0]) {
                 sendMessage({ file: e.target.files[0] });
                 e.target.value = "";
               }
             }}
+          />
+          <VoiceRecorderButton
+            disabled={sendingAttachment}
+            onVoiceRecorded={(voiceFile) => sendMessage({ file: voiceFile })}
+            onStatusChange={setStatusText}
           />
         </div>
         <div className="qx-input-wrap">

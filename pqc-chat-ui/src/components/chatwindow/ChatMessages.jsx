@@ -160,6 +160,20 @@ const ChatMessages = ({
                       </div>
                     </a>
                   )}
+                  {msg.type === "video" && msg.fileURL && (
+                    <video className="qx-msg-video" controls preload="metadata">
+                      <source src={msg.fileURL} type={msg.mimeType || "video/mp4"} />
+                      Your browser does not support video playback.
+                    </video>
+                  )}
+                  {msg.type === "audio" && msg.fileURL && (
+                    <div className="qx-audio-wrap">
+                      <audio className="qx-msg-audio" controls preload="metadata">
+                        <source src={msg.fileURL} type={msg.mimeType || "audio/webm"} />
+                        Your browser does not support audio playback.
+                      </audio>
+                    </div>
+                  )}
                   {!!msg.text && <p className="qx-msg-text">{msg.text}</p>}
                   <div className="qx-msg-meta">
                     <span className="qx-msg-time">{formatTime(msg.createdAt)}</span>

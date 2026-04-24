@@ -1,0 +1,25 @@
+.qx-composer-btn--voice {
+  position: relative;
+}
+
+.qx-composer-btn--voice svg {
+  width: 18px;
+  height: 18px;
+}
+
+.qx-composer-btn--recording {
+  color: #ff7676;
+  border-color: rgba(255, 118, 118, 0.45);
+  background: rgba(255, 118, 118, 0.12);
+}
+
+.qx-recording-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff4d4d;
+  box-shadow: 0 0 8px rgba(255, 77, 77, 0.8);
+}

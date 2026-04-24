@@ -1,1 +1,18 @@
 @import "./chatwindow.css";
+
+.qx-msg-video {
+  width: min(100%, 280px);
+  max-height: 280px;
+  border-radius: 14px;
+  margin-bottom: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.qx-audio-wrap {
+  margin-bottom: 8px;
+}
+
+.qx-msg-audio {
+  width: min(100%, 260px);
+  height: 34px;
+}

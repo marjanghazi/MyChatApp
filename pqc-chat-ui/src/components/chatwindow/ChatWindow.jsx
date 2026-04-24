@@ -641,6 +641,14 @@ const ChatWindow = ({
     } catch {}
   };
 
+  const inferMessageTypeFromFile = (file) => {
+    if (!file?.type) return "file";
+    if (file.type.startsWith("image/")) return "image";
+    if (file.type.startsWith("video/")) return "video";
+    if (file.type.startsWith("audio/")) return "audio";
+    return "file";
+  };
+
   // FIX: setDoc always uses { merge: true } to avoid nuking themes/mute settings.
   const sendMessage = async ({ text = "", file = null, forwardedFrom = null } = {}) => {
     if (!db || !authUser?.uid || !profile) {
@@ -731,11 +739,12 @@ const ChatWindow = ({
             file
           );
           payload = {
-            type:     file.type.startsWith("image/") ? "image" : "file",
+            type:     inferMessageTypeFromFile(file),
             text:     text.trim() || file.name,
             fileURL,
             fileName: file.name,
             fileSize: file.size,
+            mimeType: file.type || null,
           };
         } catch (err) {
           setStatusText(err?.message || "Attachment upload failed.");
@@ -759,7 +768,7 @@ const ChatWindow = ({
         await setDoc(conversationRef, {
           participants:        [authUser.uid, selectedUser.uid],
           participantPhones:   [profile.phoneNumber || "", selectedUser.phoneNumber || ""],
-          lastMessage:         payload.type === "text" ? payload.text : `📎 ${payload.fileName}`,
+          lastMessage:         payload.type === "text" ? payload.text : `${payload.type === "audio" ? "🎤" : payload.type === "video" ? "🎬" : "📎"} ${payload.fileName}`,
           lastMessageType:     payload.type,
           lastMessageSender:   authUser.uid,
           lastMessageStatus:   selectedUser?.isOnline ? "delivered" : "sent",
@@ -799,7 +808,7 @@ const ChatWindow = ({
       {
         participants: [authUser.uid, targetUser.uid],
         participantPhones: [profile.phoneNumber || "", targetUser.phoneNumber || ""],
-        lastMessage: payload.type === "text" ? payload.text : `📎 ${payload.fileName || "attachment"}`,
+        lastMessage: payload.type === "text" ? payload.text : `${payload.type === "audio" ? "🎤" : payload.type === "video" ? "🎬" : "📎"} ${payload.fileName || "attachment"}`,
         lastMessageType: payload.type,
         lastMessageSender: authUser.uid,
         lastMessageStatus: targetUser?.isOnline ? "delivered" : "sent",
@@ -825,11 +834,12 @@ const ChatWindow = ({
     await sendDirectMessageToUser({
       targetUser,
       payload: {
-        type: message.type === "image" || message.type === "file" ? message.type : "text",
+        type: ["image", "video", "audio", "file"].includes(message.type) ? message.type : "text",
         text: message.text || message.fileName || "Forwarded message",
         fileURL: message.fileURL || null,
         fileName: message.fileName || null,
         fileSize: message.fileSize || null,
+        mimeType: message.mimeType || null,
         forwardedFrom: activeThreadName || "thread",
       },
     });
@@ -1091,6 +1101,7 @@ const ChatWindow = ({
         imagePreview={imagePreview}
         setImagePreview={setImagePreview}
         statusText={statusText}
+        setStatusText={setStatusText}
       />
     </div>
   );

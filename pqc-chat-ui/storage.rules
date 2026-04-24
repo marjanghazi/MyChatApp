@@ -13,6 +13,16 @@ service firebase.storage {
       allow read, write: if signedIn();
     }
 
+    match /avatars/{uid}/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn() && inPath(uid);
+    }
+
+    match /logos/{uid}/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn() && inPath(uid);
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }
