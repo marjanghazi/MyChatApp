@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 import "./ChatComposer.css";
@@ -28,17 +29,26 @@ const ChatComposer = ({
   setImagePreview,
   statusText,
 }) => {
-  const emojiPickerRef = useRef(null);
+  const emojiButtonRef = useRef(null);
+  const [emojiPickerPos, setEmojiPickerPos] = useState(null);
 
   useEffect(() => {
     if (!showEmojiPicker) return undefined;
-    const handleOutsideClick = (event) => {
-      if (!emojiPickerRef.current?.contains(event.target) && !event.target.closest(".qx-composer-btn--emoji")) {
-        setShowEmojiPicker(false);
-      }
+    const updateEmojiPosition = () => {
+      const buttonRect = emojiButtonRef.current?.getBoundingClientRect();
+      if (!buttonRect) return;
+      setEmojiPickerPos({
+        left: buttonRect.left,
+        top: buttonRect.top - 442,
+      });
     };
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
+    updateEmojiPosition();
+    window.addEventListener("resize", updateEmojiPosition);
+    window.addEventListener("scroll", updateEmojiPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateEmojiPosition);
+      window.removeEventListener("scroll", updateEmojiPosition, true);
+    };
   }, [showEmojiPicker, setShowEmojiPicker]);
 
   return (
@@ -74,6 +84,7 @@ const ChatComposer = ({
             type="button"
             className="qx-composer-btn qx-composer-btn--emoji"
             title="Emoji"
+            ref={emojiButtonRef}
             onClick={() => setShowEmojiPicker((p) => !p)}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
@@ -131,17 +142,24 @@ const ChatComposer = ({
         </button>
       </div>
 
-      {showEmojiPicker && (
-        <div className="qx-emoji-picker" ref={emojiPickerRef}>
-          <Picker
-            data={data}
-            onEmojiSelect={(emoji) => onMessageChange(`${messageInput}${emoji.native}`)}
-            theme="dark"
-            previewPosition="none"
-            set="native"
-            navPosition="bottom"
-          />
-        </div>
+      {showEmojiPicker && emojiPickerPos && createPortal(
+        <div className="qx-emoji-layer" onClick={() => setShowEmojiPicker(false)}>
+          <div
+            className="qx-emoji-picker qx-emoji-picker--popover"
+            style={{ top: `${emojiPickerPos.top}px`, left: `${emojiPickerPos.left}px` }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <Picker
+              data={data}
+              onEmojiSelect={(emoji) => onMessageChange(`${messageInput}${emoji.native}`)}
+              theme="dark"
+              previewPosition="none"
+              set="native"
+              navPosition="bottom"
+            />
+          </div>
+        </div>,
+        document.body
       )}
 
       {sendingAttachment && uploadProgress > 0 && (

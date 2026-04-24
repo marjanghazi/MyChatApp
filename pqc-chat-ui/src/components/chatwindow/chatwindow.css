@@ -919,15 +919,23 @@
 
 /* ─── Emoji Picker ─── */
 .qx-emoji-picker {
-  position: absolute;
-  bottom: calc(100% + 10px);
-  left: 20px;
   background: transparent;
   border: none;
   border-radius: 18px;
   padding: 0;
   display: block;
-  z-index: 3000;
+}
+
+.qx-emoji-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2600;
+  background: rgba(8, 12, 20, 0.25);
+}
+
+.qx-emoji-picker--popover {
+  position: fixed;
+  z-index: 2700;
   animation: qx-fade-up 0.2s ease;
   pointer-events: auto;
 }
