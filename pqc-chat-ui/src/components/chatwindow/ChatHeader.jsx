@@ -18,9 +18,15 @@ const ChatHeader = ({
   leaveGroup,
   toggleFollowChannel,
   authUser,
+  onOpenGroupDetails,
 }) => (
   <>
     <header className="qx-chat-header">
+      <button
+        type="button"
+        className={`qx-chat-contact-trigger ${activeThreadType === "group" ? "qx-chat-contact-trigger--active" : ""}`}
+        onClick={() => activeThreadType === "group" && onOpenGroupDetails?.()}
+      >
       <div className="qx-chat-contact-avatar">
         {activeThreadType === "direct" && selectedUser?.photoURL
           ? <img src={selectedUser.photoURL} alt={selectedUser.displayName} />
@@ -48,6 +54,7 @@ const ChatHeader = ({
             : "○ Offline"}
         </span>
       </div>
+      </button>
 
       {activeThreadType === "direct" ? (
         <div className="qx-chat-actions">

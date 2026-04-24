@@ -1,6 +1,6 @@
-import Picker from "@emoji-mart/react";
-import data from "@emoji-mart/data";
 import "./ChatComposer.css";
+
+const QUICK_EMOJIS = ["😀", "😂", "😍", "👍", "🙏", "🔥", "🎉", "❤️", "😎", "🤝", "✅", "🚀"];
 
 const ChatComposer = ({
   activeThreadType,
@@ -113,12 +113,16 @@ const ChatComposer = ({
 
       {showEmojiPicker && (
         <div className="qx-emoji-picker">
-          <Picker
-            data={data}
-            onEmojiSelect={(emoji) => onMessageChange(messageInput + emoji.native)}
-            theme="dark"
-            previewPosition="none"
-          />
+          {QUICK_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              className="qx-emoji-btn"
+              onClick={() => onMessageChange(`${messageInput}${emoji}`)}
+            >
+              {emoji}
+            </button>
+          ))}
         </div>
       )}
 

@@ -60,6 +60,20 @@
   flex-shrink: 0;
 }
 
+.qx-chat-contact-trigger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  padding: 0;
+}
+
+.qx-chat-contact-trigger--active {
+  cursor: pointer;
+}
+
 .qx-chat-contact-avatar img,
 .qx-chat-contact-avatar span {
   width: 42px;

@@ -59,6 +59,8 @@ const ChatWindow = ({
   allUsers,
   contacts,
   onUpdateConversation,   // ({ type, channel }) => void  — used for channel follow toggle
+  onOpenGroupDetails,
+  onLeaveGroup,
   onUpdateCallState,      // optional parent notification
   onSendCallSignal,       // optional parent notification
   onStopCallMedia,        // optional parent notification
@@ -78,7 +80,6 @@ const ChatWindow = ({
   const [showCallLogs, setShowCallLogs]       = useState(false);
   const [callLogs, setCallLogs]               = useState([]);
   const [editingMessageId, setEditingMessageId] = useState(null);
-  const [showGroupMembers, setShowGroupMembers] = useState(false);
 
   // ── Call state ────────────────────────────────────────────────────────────
   const [localCallStream, setLocalCallStream]   = useState(null);
@@ -141,14 +142,6 @@ const ChatWindow = ({
   const activeThread        = activeThreadType === "direct" ? selectedUser : activeThreadType === "group" ? selectedGroup : selectedChannel;
   const activeThreadName    = activeThreadType === "direct" ? selectedUser?.displayName : activeThreadType === "group" ? selectedGroup?.name : selectedChannel?.name;
 
-  const groupMemberUsers = useMemo(() => {
-    if (!selectedGroup?.memberIds?.length) return [];
-    return selectedGroup.memberIds
-      .map((memberId) => usersById.get(memberId))
-      .filter(Boolean)
-      .sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
-  }, [selectedGroup?.memberIds, usersById]);
-  const isGroupAdmin = activeThreadType === "group" && !!selectedGroup?.admins?.includes(authUser?.uid);
 
   // Keep ref in sync so WebRTC event handlers always see current call state
   useEffect(() => { selectedCallRef.current = selectedCall; }, [selectedCall]);
@@ -172,10 +165,6 @@ const ChatWindow = ({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  useEffect(() => {
-    setShowGroupMembers(false);
-  }, [activeThreadType, selectedGroup?.id]);
 
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -978,70 +967,6 @@ const ChatWindow = ({
     }
   };
 
-  const leaveGroup = async () => {
-    if (!authUser || activeThreadType !== "group" || !selectedGroup) return;
-    const confirmed = window.confirm(`Leave ${selectedGroup.name}?`);
-    if (!confirmed) return;
-    await updateDoc(doc(db, "groups", selectedGroup.id), {
-      memberIds: arrayRemove(authUser.uid),
-      admins: arrayRemove(authUser.uid),
-      updatedAt: serverTimestamp(),
-    });
-    setStatusText("✓ You left the group.");
-  };
-
-  const addGroupMember = async (memberUid) => {
-    if (!selectedGroup?.id || !memberUid || !isGroupAdmin) return;
-    try {
-      await updateDoc(doc(db, "groups", selectedGroup.id), {
-        memberIds: arrayUnion(memberUid),
-        updatedAt: serverTimestamp(),
-      });
-      setStatusText("✓ Member added to group.");
-    } catch (e) {
-      setStatusText(`Could not add member: ${e.message}`);
-    }
-  };
-
-  const toggleGroupAdmin = async (memberUid, makeAdmin) => {
-    if (!selectedGroup?.id || !memberUid || !isGroupAdmin) return;
-    if (!makeAdmin && memberUid === selectedGroup.createdBy) {
-      setStatusText("Group creator must remain an admin.");
-      return;
-    }
-    try {
-      await updateDoc(doc(db, "groups", selectedGroup.id), {
-        admins: makeAdmin ? arrayUnion(memberUid) : arrayRemove(memberUid),
-        updatedAt: serverTimestamp(),
-      });
-      setStatusText(makeAdmin ? "✓ Admin granted." : "✓ Admin removed.");
-    } catch (e) {
-      setStatusText(`Could not update admin role: ${e.message}`);
-    }
-  };
-
-  const removeGroupMember = async (memberUid) => {
-    if (!selectedGroup?.id || !memberUid || !isGroupAdmin) return;
-    if (memberUid === authUser.uid) {
-      setStatusText("Use Leave Group to remove yourself.");
-      return;
-    }
-    if (memberUid === selectedGroup.createdBy) {
-      setStatusText("Group creator cannot be removed.");
-      return;
-    }
-    try {
-      await updateDoc(doc(db, "groups", selectedGroup.id), {
-        memberIds: arrayRemove(memberUid),
-        admins: arrayRemove(memberUid),
-        updatedAt: serverTimestamp(),
-      });
-      setStatusText("✓ Member removed.");
-    } catch (e) {
-      setStatusText(`Could not remove member: ${e.message}`);
-    }
-  };
-
   // ═════════════════════════════════════════════════════════════════════════
   // ── Guards ────────────────────────────────────────────────────────────────
   // ═════════════════════════════════════════════════════════════════════════
@@ -1069,94 +994,14 @@ const ChatWindow = ({
         selectedTheme={selectedTheme}
         setTheme={setTheme}
         deleteChatHistory={deleteChatHistory}
-        leaveGroup={leaveGroup}
+        leaveGroup={onLeaveGroup}
         toggleFollowChannel={toggleFollowChannel}
         authUser={authUser}
-        setShowGroupMembers={setShowGroupMembers}
-        THEMES={THEMES}
+        onOpenGroupDetails={onOpenGroupDetails}
+        themes={THEMES}
       />
 
       <ChatToolbar chatSearch={chatSearch} setChatSearch={setChatSearch} />
-
-      {activeThreadType === "group" && showGroupMembers && (
-        <div className="qx-call-logs-panel">
-          <div className="qx-call-logs-header">
-            <h4>Group members · {(selectedGroup?.memberIds || []).length}</h4>
-            <button className="qx-call-logs-close" onClick={() => setShowGroupMembers(false)}>✕</button>
-          </div>
-          <div className="qx-call-logs-list">
-            <div className="qx-call-log-item">
-              <div className="qx-call-log-details">
-                <div className="qx-call-log-type">Group admin(s)</div>
-                <div className="qx-call-log-status">
-                  {(selectedGroup?.admins || [])
-                    .map((id) => usersById.get(id)?.displayName || "Unknown")
-                    .join(", ") || "None"}
-                </div>
-              </div>
-            </div>
-            {groupMemberUsers.map((member) => {
-              const memberIsAdmin = (selectedGroup?.admins || []).includes(member.uid);
-              const isMe = member.uid === authUser.uid;
-              return (
-                <div key={member.uid} className="qx-call-log-item">
-                  <div className="qx-call-log-details">
-                    <div className="qx-call-log-type">
-                      {member.displayName || member.email || "Member"} {isMe ? "(You)" : ""}
-                    </div>
-                    <div className="qx-call-log-status">
-                      {memberIsAdmin ? "Admin" : "Member"} · {member.email || member.phoneNumber || "No contact"}
-                    </div>
-                  </div>
-                  {isGroupAdmin && !isMe && (
-                    <div className="qx-call-log-actions">
-                      <button
-                        className="qx-call-log-callback"
-                        title={memberIsAdmin ? "Remove admin" : "Make admin"}
-                        onClick={() => toggleGroupAdmin(member.uid, !memberIsAdmin)}
-                      >
-                        {memberIsAdmin ? "⬇️" : "⬆️"}
-                      </button>
-                      <button
-                        className="qx-call-log-callback"
-                        title="Remove from group"
-                        onClick={() => removeGroupMember(member.uid)}
-                      >
-                        ➖
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {isGroupAdmin && (
-              <>
-                <div className="qx-call-log-item">
-                  <div className="qx-call-log-details">
-                    <div className="qx-call-log-type">Add more members</div>
-                    <div className="qx-call-log-status">Select from your contacts list</div>
-                  </div>
-                </div>
-                {contacts
-                  .filter((entry) => !(selectedGroup?.memberIds || []).includes(entry.uid))
-                  .map((entry) => (
-                    <div key={entry.uid} className="qx-call-log-item">
-                      <div className="qx-call-log-details">
-                        <div className="qx-call-log-type">{entry.displayName || entry.email || "Contact"}</div>
-                        <div className="qx-call-log-status">{entry.email || entry.phoneNumber || "No contact"}</div>
-                      </div>
-                      <div className="qx-call-log-actions">
-                        <button className="qx-call-log-callback" title="Add member" onClick={() => addGroupMember(entry.uid)}>
-                          ➕
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-              </>
-            )}
-          </div>
-        </div>
-      )}
 
       <ChatCallPanels
         showCallLogs={showCallLogs}

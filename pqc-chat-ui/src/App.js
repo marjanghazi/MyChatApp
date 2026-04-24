@@ -8,6 +8,7 @@ import {
 } from "firebase/auth";
 import {
   addDoc,
+  arrayRemove,
   arrayUnion,
   collection,
   deleteDoc,
@@ -25,6 +26,7 @@ import {
 } from "firebase/firestore";
 import CreateGroupModal   from "./components/community/CreateGroupModal";
 import CreateChannelModal from "./components/community/CreateChannelModal";
+import GroupDetailsPage from "./components/community/GroupDetailsPage";
 import {
   createChannel,
   createGroup,
@@ -108,6 +110,7 @@ function App() {
   const [profileNameInput,  setProfileNameInput]  = useState("");
   const [statusText,        setStatusText]        = useState("");
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [showGroupDetails,  setShowGroupDetails]  = useState(false);
 
   // ── Persist theme ────────────────────────────────────────────────────────
   useEffect(() => { localStorage.setItem("appTheme", appTheme); }, [appTheme]);
@@ -209,6 +212,7 @@ function App() {
   }, [authUser]);
 
   useEffect(() => { setProfileNameInput(profile?.displayName || ""); }, [profile?.displayName]);
+  useEffect(() => { setShowGroupDetails(false); }, [selectedGroup?.id, activeThreadType]);
 
   // ── Contacts ──────────────────────────────────────────────────────────────
   const contacts = useMemo(() => {
@@ -334,6 +338,92 @@ function App() {
     } else {
       await followChannel(channel.id, authUser.uid);
       setStatusText(`✓ Following ${channel.name}`);
+    }
+  };
+
+  const usersById = useMemo(() => {
+    const map = new Map(allUsers.map((user) => [user.uid, user]));
+    if (authUser?.uid) {
+      map.set(authUser.uid, {
+        uid: authUser.uid,
+        displayName: profile?.displayName || authUser.displayName || authUser.email?.split("@")[0] || "You",
+        email: profile?.email || authUser.email || "",
+        phoneNumber: profile?.phoneNumber || "",
+        photoURL: profile?.photoURL || authUser.photoURL || "",
+      });
+    }
+    return map;
+  }, [allUsers, authUser, profile]);
+
+  const leaveSelectedGroup = async () => {
+    if (!authUser || activeThreadType !== "group" || !selectedGroup) return;
+    const confirmed = window.confirm(`Leave ${selectedGroup.name}?`);
+    if (!confirmed) return;
+    await updateDoc(doc(db, "groups", selectedGroup.id), {
+      memberIds: arrayRemove(authUser.uid),
+      admins: arrayRemove(authUser.uid),
+      updatedAt: serverTimestamp(),
+    });
+    setShowGroupDetails(false);
+    setSelectedGroup(null);
+    setStatusText("✓ You left the group.");
+  };
+
+  const addGroupMember = async (memberUid) => {
+    if (!selectedGroup?.id || !memberUid) return;
+    const isGroupAdmin = !!selectedGroup.admins?.includes(authUser?.uid);
+    if (!isGroupAdmin) return;
+    try {
+      await updateDoc(doc(db, "groups", selectedGroup.id), {
+        memberIds: arrayUnion(memberUid),
+        updatedAt: serverTimestamp(),
+      });
+      setStatusText("✓ Member added to group.");
+    } catch (e) {
+      setStatusText(`Could not add member: ${e.message}`);
+    }
+  };
+
+  const toggleGroupAdmin = async (memberUid, makeAdmin) => {
+    if (!selectedGroup?.id || !memberUid) return;
+    const isGroupAdmin = !!selectedGroup.admins?.includes(authUser?.uid);
+    if (!isGroupAdmin) return;
+    if (!makeAdmin && memberUid === selectedGroup.createdBy) {
+      setStatusText("Group creator must remain an admin.");
+      return;
+    }
+    try {
+      await updateDoc(doc(db, "groups", selectedGroup.id), {
+        admins: makeAdmin ? arrayUnion(memberUid) : arrayRemove(memberUid),
+        updatedAt: serverTimestamp(),
+      });
+      setStatusText(makeAdmin ? "✓ Admin granted." : "✓ Admin removed.");
+    } catch (e) {
+      setStatusText(`Could not update admin role: ${e.message}`);
+    }
+  };
+
+  const removeGroupMember = async (memberUid) => {
+    if (!selectedGroup?.id || !memberUid) return;
+    const isGroupAdmin = !!selectedGroup.admins?.includes(authUser?.uid);
+    if (!isGroupAdmin) return;
+    if (memberUid === authUser?.uid) {
+      setStatusText("Use Leave Group to remove yourself.");
+      return;
+    }
+    if (memberUid === selectedGroup.createdBy) {
+      setStatusText("Group creator cannot be removed.");
+      return;
+    }
+    try {
+      await updateDoc(doc(db, "groups", selectedGroup.id), {
+        memberIds: arrayRemove(memberUid),
+        admins: arrayRemove(memberUid),
+        updatedAt: serverTimestamp(),
+      });
+      setStatusText("✓ Member removed.");
+    } catch (e) {
+      setStatusText(`Could not remove member: ${e.message}`);
     }
   };
 
@@ -494,6 +584,7 @@ function App() {
           setSelectedGroup(group);
           setSelectedUser(null);
           setSelectedChannel(null);
+          setShowGroupDetails(false);
         }}
         onSelectChannel={(channel) => {
           setActiveThreadType("channel");
@@ -591,6 +682,18 @@ function App() {
             <span>🛡️ Zero-Knowledge</span>
           </div>
         </div>
+      ) : showGroupDetails && activeThreadType === "group" && selectedGroup ? (
+        <GroupDetailsPage
+          selectedGroup={selectedGroup}
+          authUser={authUser}
+          usersById={usersById}
+          contacts={contacts}
+          onBack={() => setShowGroupDetails(false)}
+          onLeaveGroup={leaveSelectedGroup}
+          onToggleAdmin={toggleGroupAdmin}
+          onRemoveMember={removeGroupMember}
+          onAddMember={addGroupMember}
+        />
       ) : (
         <ChatWindow
           authUser={authUser}
@@ -602,6 +705,8 @@ function App() {
           conversations={conversations}
           allUsers={allUsers}
           contacts={contacts}
+          onOpenGroupDetails={() => setShowGroupDetails(true)}
+          onLeaveGroup={leaveSelectedGroup}
           // FIX: was missing — channel follow toggle inside ChatWindow header now works
           onUpdateConversation={({ type, channel }) => {
             if (type === "toggleFollow") toggleFollowChannel(channel);
