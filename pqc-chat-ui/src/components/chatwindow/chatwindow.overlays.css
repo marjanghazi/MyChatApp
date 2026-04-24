@@ -1,0 +1,5 @@
+.qx-lightbox,
+.qx-status-toast,
+.qx-spinner-sm {
+  /* Overlay styles are defined in chatwindow.base.css; this file scopes ownership for overlay styles. */
+}
