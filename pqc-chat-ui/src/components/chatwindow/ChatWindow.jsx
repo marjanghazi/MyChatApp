@@ -120,7 +120,19 @@ const ChatWindow = ({
     return null;
   }, [activeThreadType, selectedConversationId, conversations]);
 
-  const usersById = useMemo(() => new Map(allUsers.map((user) => [user.uid, user])), [allUsers]);
+  const usersById = useMemo(() => {
+    const map = new Map(allUsers.map((user) => [user.uid, user]));
+    if (authUser?.uid) {
+      map.set(authUser.uid, {
+        uid: authUser.uid,
+        displayName: profile?.displayName || authUser.displayName || authUser.email?.split("@")[0] || "You",
+        email: profile?.email || authUser.email || "",
+        phoneNumber: profile?.phoneNumber || "",
+        photoURL: profile?.photoURL || authUser.photoURL || "",
+      });
+    }
+    return map;
+  }, [allUsers, authUser, profile]);
 
   const selectedTheme       = selectedConversation?.themeBy?.[authUser?.uid] || "default";
   const selectedPartnerTyping = selectedConversation?.typing?.[selectedUser?.uid] || false;
@@ -972,6 +984,7 @@ const ChatWindow = ({
     if (!confirmed) return;
     await updateDoc(doc(db, "groups", selectedGroup.id), {
       memberIds: arrayRemove(authUser.uid),
+      admins: arrayRemove(authUser.uid),
       updatedAt: serverTimestamp(),
     });
     setStatusText("✓ You left the group.");

@@ -73,11 +73,11 @@ const ChatComposer = ({
           />
         </div>
         <div className="qx-input-wrap">
-          <input
-            type="text"
+          <textarea
             value={messageInput}
             onChange={(e) => onMessageChange(e.target.value)}
             placeholder={editingMessageId ? "Edit your message..." : "Type a secure message…"}
+            rows={1}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();

@@ -57,6 +57,23 @@ const buildPhoneVariants = (raw) => {
 
 const conversationIdFor = (uidA, uidB) => [uidA, uidB].sort().join("_");
 
+const AUTH_ERROR_MESSAGES = {
+  "auth/invalid-email": "Please enter a valid email address.",
+  "auth/user-not-found": "No account found for this email. Please register first.",
+  "auth/wrong-password": "Incorrect password. Please try again.",
+  "auth/invalid-credential": "Email or password is incorrect.",
+  "auth/email-already-in-use": "This email is already in use. Please sign in instead.",
+  "auth/weak-password": "Password is too weak. Use at least 6 characters.",
+  "auth/too-many-requests": "Too many attempts. Please wait a moment and try again.",
+  "auth/network-request-failed": "Network issue detected. Please check your connection.",
+};
+
+const getAuthErrorMessage = (error) => {
+  if (!error) return "Unable to complete request.";
+  if (error.message?.includes("phone number is already linked")) return error.message;
+  return AUTH_ERROR_MESSAGES[error.code] || error.message || "Unable to complete request.";
+};
+
 function App() {
   const [appTheme, setAppTheme] = useState(() => {
     const saved = localStorage.getItem("appTheme");
@@ -261,7 +278,7 @@ function App() {
       setAuthForm({ displayName: "", phoneNumber: "", email: "", password: "" });
       setPublicView("login");
     } catch (error) {
-      setAuthError(error.message || "Unable to complete request.");
+      setAuthError(getAuthErrorMessage(error));
     } finally {
       setAuthLoading(false);
     }

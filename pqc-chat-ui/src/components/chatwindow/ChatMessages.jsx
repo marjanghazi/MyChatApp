@@ -40,6 +40,7 @@ const ChatMessages = ({
       const prevMsg  = visibleMessages[index - 1];
       const showDate = !prevMsg || formatDate(msg.createdAt) !== formatDate(prevMsg?.createdAt);
       const isRead   = selectedUser ? (msg.readBy || []).includes(selectedUser.uid) : false;
+      const senderName = msg.senderName || usersById.get(msg.senderId)?.displayName || "Member";
 
       return (
         <div key={msg.id}>
@@ -120,6 +121,9 @@ const ChatMessages = ({
                 </div>
               )}
               <div className="qx-msg-content">
+                {!isMine && activeThreadType === "group" && (
+                  <div className="qx-msg-sender">{senderName}</div>
+                )}
                 {msg.replyTo && (
                   <div className="qx-reply-preview">
                     <span className="qx-reply-bar" />
