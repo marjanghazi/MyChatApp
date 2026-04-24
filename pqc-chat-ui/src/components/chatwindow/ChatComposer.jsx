@@ -1,6 +1,7 @@
+import { useEffect, useRef } from "react";
+import Picker from "@emoji-mart/react";
+import data from "@emoji-mart/data";
 import "./ChatComposer.css";
-
-const QUICK_EMOJIS = ["😀", "😂", "😍", "👍", "🙏", "🔥", "🎉", "❤️", "😎", "🤝", "✅", "🚀"];
 
 const ChatComposer = ({
   activeThreadType,
@@ -26,7 +27,21 @@ const ChatComposer = ({
   imagePreview,
   setImagePreview,
   statusText,
-}) => (
+}) => {
+  const emojiPickerRef = useRef(null);
+
+  useEffect(() => {
+    if (!showEmojiPicker) return undefined;
+    const handleOutsideClick = (event) => {
+      if (!emojiPickerRef.current?.contains(event.target) && !event.target.closest(".qx-composer-btn--emoji")) {
+        setShowEmojiPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [showEmojiPicker, setShowEmojiPicker]);
+
+  return (
   <>
     <div className="qx-typing-row">
       {activeThreadType === "direct" && selectedPartnerTyping && (
@@ -55,7 +70,12 @@ const ChatComposer = ({
     <footer className="qx-composer" ref={composerRef}>
       <div className="qx-composer-inner">
         <div className="qx-composer-tools">
-          <button type="button" className="qx-composer-btn" title="Emoji" onClick={() => setShowEmojiPicker((p) => !p)}>
+          <button
+            type="button"
+            className="qx-composer-btn qx-composer-btn--emoji"
+            title="Emoji"
+            onClick={() => setShowEmojiPicker((p) => !p)}
+          >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
           </button>
           <label htmlFor="attachment" className="qx-composer-btn" title="Attach file">
@@ -112,17 +132,15 @@ const ChatComposer = ({
       </div>
 
       {showEmojiPicker && (
-        <div className="qx-emoji-picker">
-          {QUICK_EMOJIS.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              className="qx-emoji-btn"
-              onClick={() => onMessageChange(`${messageInput}${emoji}`)}
-            >
-              {emoji}
-            </button>
-          ))}
+        <div className="qx-emoji-picker" ref={emojiPickerRef}>
+          <Picker
+            data={data}
+            onEmojiSelect={(emoji) => onMessageChange(`${messageInput}${emoji.native}`)}
+            theme="dark"
+            previewPosition="none"
+            set="native"
+            navPosition="bottom"
+          />
         </div>
       )}
 
@@ -143,6 +161,7 @@ const ChatComposer = ({
 
     {statusText && <div className="qx-status-toast">{statusText}</div>}
   </>
-);
+  );
+};
 
 export default ChatComposer;

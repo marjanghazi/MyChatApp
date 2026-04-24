@@ -922,39 +922,24 @@
   position: absolute;
   bottom: calc(100% + 10px);
   left: 20px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-glow);
+  background: transparent;
+  border: none;
   border-radius: 18px;
-  padding: 12px;
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 6px;
-  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  padding: 0;
+  display: block;
   z-index: 3000;
-  backdrop-filter: blur(20px);
   animation: qx-fade-up 0.2s ease;
   pointer-events: auto;
 }
 
-.qx-emoji-picker button {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: var(--surface-hover);
-  border: 1px solid var(--border);
-  font-size: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-  cursor: pointer;
-}
-
-.qx-emoji-picker button:hover {
-  background: var(--bg-glass);
-  border-color: var(--accent-c);
-  transform: scale(1.2);
-  box-shadow: 0 0 12px var(--glow-c);
+.qx-emoji-picker em-emoji-picker {
+  --rgb-background: 18, 23, 32;
+  --rgb-color: 230, 234, 243;
+  --rgb-accent: 77, 127, 255;
+  --rgb-input: 24, 30, 42;
+  border: 1px solid var(--border-glow);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
 }
 
 /* ─── Upload Progress ─── */
