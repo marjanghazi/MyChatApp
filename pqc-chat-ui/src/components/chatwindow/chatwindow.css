@@ -829,7 +829,8 @@
   position: relative;
 }
 
-.qx-input-wrap input {
+.qx-input-wrap input,
+.qx-input-wrap textarea {
   width: 100%;
   background: var(--bg-input);
   color: var(--text);
@@ -838,11 +839,17 @@
   padding: 11px 20px;
   font-size: 14px;
   transition: all 0.2s ease;
+  resize: none;
+  min-height: 44px;
+  max-height: 160px;
+  font-family: inherit;
 }
 
-.qx-input-wrap input::placeholder { color: var(--text-muted); }
+.qx-input-wrap input::placeholder,
+.qx-input-wrap textarea::placeholder { color: var(--text-muted); }
 
-.qx-input-wrap input:focus {
+.qx-input-wrap input:focus,
+.qx-input-wrap textarea:focus {
   border-color: var(--accent-c);
   box-shadow: 0 0 0 3px var(--glow-c), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }

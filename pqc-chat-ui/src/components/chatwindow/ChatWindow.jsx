@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import "./chatwindow.css";
-import data from "@emoji-mart/data";
-import Picker from "@emoji-mart/react";
+import "./chatwindow.base.css";
+import "./chatwindow.header.css";
+import "./chatwindow.messages.css";
+import "./chatwindow.composer.css";
+import "./chatwindow.overlays.css";
 import {
   addDoc,
   arrayUnion,
@@ -26,69 +28,23 @@ import {
   ref,
   uploadBytesResumable,
 } from "firebase/storage";
-import { auth, db, storage } from "../../firebase";
-
-const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
-const THEMES = [
-  { id: "default", label: "⚡ Quantum" },
-  { id: "emerald", label: "🌿 Emerald" },
-  { id: "midnight", label: "🌌 Midnight" },
-  { id: "sunset", label: "🌅 Sunset" },
-  { id: "cyber", label: "🔷 Cyber" },
-];
-
-// Only STUN here — for production across different networks you MUST add TURN servers.
-// Without TURN, calls will fail on symmetric NAT (most mobile networks).
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" },
-    { urls: "stun:stun4.l.google.com:19302" },
-  ],
-  iceCandidatePoolSize: 10,
-};
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const toDate = (v) =>
-  !v ? null : typeof v?.toDate === "function" ? v.toDate() : new Date(v);
-
-const formatTime = (dateValue) => {
-  const d = toDate(dateValue);
-  if (!d) return "";
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-};
-
-const formatDate = (dateValue) => {
-  const d = toDate(dateValue);
-  if (!d) return "";
-  const diff = Date.now() - d.getTime();
-  if (diff < 86_400_000) return "Today";
-  if (diff < 172_800_000) return "Yesterday";
-  return d.toLocaleDateString([], { month: "short", day: "numeric" });
-};
-
-const formatCallTime = (dateValue) => {
-  const d = toDate(dateValue);
-  if (!d) return "";
-  const diff = Date.now() - d.getTime();
-  if (diff < 60_000) return "Just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return d.toLocaleDateString([], { month: "short", day: "numeric" });
-};
-
-const formatCallDuration = (seconds) => {
-  if (!seconds || seconds <= 0) return "";
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-};
-
-const conversationIdFor = (uidA, uidB) => [uidA, uidB].sort().join("_");
+import { db, storage } from "../../firebase";
+import { ICE_SERVERS, MAX_FILE_SIZE_BYTES, THEMES } from "./chatConstants";
+import {
+  conversationIdFor,
+  formatCallDuration,
+  formatCallTime,
+  formatDate,
+  formatTime,
+  getCallIcon,
+  getCallStatusText,
+  toDate,
+} from "./chatFormatters";
+import ChatHeader from "./ChatHeader";
+import ChatToolbar from "./ChatToolbar";
+import ChatCallPanels from "./ChatCallPanels";
+import ChatMessages from "./ChatMessages";
+import ChatComposer from "./ChatComposer";
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -121,14 +77,13 @@ const ChatWindow = ({
   const [statusText, setStatusText]           = useState("");
   const [showCallLogs, setShowCallLogs]       = useState(false);
   const [callLogs, setCallLogs]               = useState([]);
-  const [openActionMenuFor, setOpenActionMenuFor] = useState(null);
   const [editingMessageId, setEditingMessageId] = useState(null);
+  const [showGroupMembers, setShowGroupMembers] = useState(false);
 
   // ── Call state ────────────────────────────────────────────────────────────
   const [localCallStream, setLocalCallStream]   = useState(null);
   const [remoteCallStream, setRemoteCallStream] = useState(null);
   const [incomingOffer, setIncomingOffer]       = useState(null);
-  const [isCallActive, setIsCallActive]         = useState(false);
   const [isMuted, setIsMuted]                   = useState(false);
   const [isVideoOff, setIsVideoOff]             = useState(false);
   const [callDurationSec, setCallDurationSec]   = useState(0);
@@ -174,6 +129,15 @@ const ChatWindow = ({
   const activeThread        = activeThreadType === "direct" ? selectedUser : activeThreadType === "group" ? selectedGroup : selectedChannel;
   const activeThreadName    = activeThreadType === "direct" ? selectedUser?.displayName : activeThreadType === "group" ? selectedGroup?.name : selectedChannel?.name;
 
+  const groupMemberUsers = useMemo(() => {
+    if (!selectedGroup?.memberIds?.length) return [];
+    return selectedGroup.memberIds
+      .map((memberId) => usersById.get(memberId))
+      .filter(Boolean)
+      .sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
+  }, [selectedGroup?.memberIds, usersById]);
+  const isGroupAdmin = activeThreadType === "group" && !!selectedGroup?.admins?.includes(authUser?.uid);
+
   // Keep ref in sync so WebRTC event handlers always see current call state
   useEffect(() => { selectedCallRef.current = selectedCall; }, [selectedCall]);
 
@@ -196,6 +160,10 @@ const ChatWindow = ({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    setShowGroupMembers(false);
+  }, [activeThreadType, selectedGroup?.id]);
 
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -303,7 +271,6 @@ const ChatWindow = ({
             await applyRemoteDescription(peerConnectionRef.current, signal.sdp);
             const currentCall = selectedCallRef.current;
             if (currentCall && onUpdateCallState) onUpdateCallState({ ...currentCall, status: "active" });
-            setIsCallActive(true);
 
           } else if (signal.type === "ice") {
             // FIX: buffer if peer connection doesn't exist OR remote desc not yet set.
@@ -396,7 +363,6 @@ const ChatWindow = ({
       return null;
     });
     setIncomingOffer(null);
-    setIsCallActive(false);
     setIsMuted(false);
     setIsVideoOff(false);
     if (onStopCallMedia) onStopCallMedia();
@@ -573,7 +539,6 @@ const ChatWindow = ({
       await pc.setLocalDescription(answer);
       await sendCallSignal({ type: "answer", sdp: answer });
       await setCallState({ ...currentCall, status: "active" });
-      setIsCallActive(true);
       setIncomingOffer(null);
     } catch (error) {
       console.error("acceptCall error:", error);
@@ -1012,22 +977,56 @@ const ChatWindow = ({
     setStatusText("✓ You left the group.");
   };
 
-  // ── Call log helpers ──────────────────────────────────────────────────────
-  const getCallIcon = (log) => {
-    if (log.status === "missed")     return "📵";
-    if (log.status === "cancelled")  return "↩️";
-    if (log.type   === "video")      return log.direction === "outgoing" ? "📹" : "🎥";
-    return log.direction === "outgoing" ? "📞" : "📲";
+  const addGroupMember = async (memberUid) => {
+    if (!selectedGroup?.id || !memberUid || !isGroupAdmin) return;
+    try {
+      await updateDoc(doc(db, "groups", selectedGroup.id), {
+        memberIds: arrayUnion(memberUid),
+        updatedAt: serverTimestamp(),
+      });
+      setStatusText("✓ Member added to group.");
+    } catch (e) {
+      setStatusText(`Could not add member: ${e.message}`);
+    }
   };
 
-  const getCallStatusText = (log) => {
-    if (log.status === "missed")    return "Missed call";
-    if (log.status === "cancelled") return "Cancelled";
-    if (log.status === "completed") {
-      const d = formatCallDuration(log.duration || 0);
-      return d ? `${d}` : "Completed";
+  const toggleGroupAdmin = async (memberUid, makeAdmin) => {
+    if (!selectedGroup?.id || !memberUid || !isGroupAdmin) return;
+    if (!makeAdmin && memberUid === selectedGroup.createdBy) {
+      setStatusText("Group creator must remain an admin.");
+      return;
     }
-    return log.direction === "outgoing" ? "Outgoing" : "Incoming";
+    try {
+      await updateDoc(doc(db, "groups", selectedGroup.id), {
+        admins: makeAdmin ? arrayUnion(memberUid) : arrayRemove(memberUid),
+        updatedAt: serverTimestamp(),
+      });
+      setStatusText(makeAdmin ? "✓ Admin granted." : "✓ Admin removed.");
+    } catch (e) {
+      setStatusText(`Could not update admin role: ${e.message}`);
+    }
+  };
+
+  const removeGroupMember = async (memberUid) => {
+    if (!selectedGroup?.id || !memberUid || !isGroupAdmin) return;
+    if (memberUid === authUser.uid) {
+      setStatusText("Use Leave Group to remove yourself.");
+      return;
+    }
+    if (memberUid === selectedGroup.createdBy) {
+      setStatusText("Group creator cannot be removed.");
+      return;
+    }
+    try {
+      await updateDoc(doc(db, "groups", selectedGroup.id), {
+        memberIds: arrayRemove(memberUid),
+        admins: arrayRemove(memberUid),
+        updatedAt: serverTimestamp(),
+      });
+      setStatusText("✓ Member removed.");
+    } catch (e) {
+      setStatusText(`Could not remove member: ${e.message}`);
+    }
   };
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -1043,552 +1042,187 @@ const ChatWindow = ({
 
   return (
     <div className={`chat-window theme-${selectedTheme}`}>
+      <ChatHeader
+        activeThreadType={activeThreadType}
+        selectedUser={selectedUser}
+        selectedGroup={selectedGroup}
+        selectedChannel={selectedChannel}
+        activeThreadName={activeThreadName}
+        showCallLogs={showCallLogs}
+        setShowCallLogs={setShowCallLogs}
+        startCall={startCall}
+        selectedMuted={selectedMuted}
+        setMute={setMute}
+        selectedTheme={selectedTheme}
+        setTheme={setTheme}
+        deleteChatHistory={deleteChatHistory}
+        leaveGroup={leaveGroup}
+        toggleFollowChannel={toggleFollowChannel}
+        authUser={authUser}
+        setShowGroupMembers={setShowGroupMembers}
+        THEMES={THEMES}
+      />
 
-      {/* ── Header ── */}
-      <header className="qx-chat-header">
-        <div className="qx-chat-contact-avatar">
-          {activeThreadType === "direct" && selectedUser?.photoURL
-            ? <img src={selectedUser.photoURL} alt={selectedUser.displayName} />
-            : <span>
-                {activeThreadType === "group"
-                  ? "👥"
-                  : activeThreadType === "channel"
-                  ? "📣"
-                  : (selectedUser?.displayName || "U").charAt(0).toUpperCase()}
-              </span>
-          }
-          {activeThreadType === "direct" && (
-            <span className={`qx-presence ${selectedUser?.isOnline ? "qx-presence--online" : "qx-presence--offline"}`} />
-          )}
-        </div>
-        <div className="qx-chat-contact-meta">
-          <h3>{activeThreadName}</h3>
-          <span className={activeThreadType === "direct" && selectedUser?.isOnline ? "qx-online-label" : "qx-offline-label"}>
-            {activeThreadType === "group"
-              ? `${(selectedGroup?.memberIds || []).length} members`
-              : activeThreadType === "channel"
-              ? `${(selectedChannel?.followerIds || []).length} followers`
-              : selectedUser?.isOnline
-              ? "● Online"
-              : "○ Offline"}
-          </span>
-        </div>
+      <ChatToolbar chatSearch={chatSearch} setChatSearch={setChatSearch} />
 
-        {activeThreadType === "direct" ? (
-          <div className="qx-chat-actions">
-            <button type="button" className="qx-icon-btn" title="Voice call" onClick={() => startCall("audio")}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 012 1.22 2 2 0 014 .04h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-            </button>
-            <button type="button" className="qx-icon-btn" title="Video call" onClick={() => startCall("video")}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-            </button>
-            <button
-              type="button"
-              className={`qx-icon-btn ${showCallLogs ? "qx-icon-btn--active" : ""}`}
-              title="Call history"
-              onClick={() => setShowCallLogs((p) => !p)}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 012 1.22 2 2 0 014 .04h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
-                <line x1="18" y1="6" x2="23" y2="6"/>
-                <line x1="18" y1="10" x2="23" y2="10"/>
-              </svg>
-            </button>
-            <button
-              type="button"
-              className={`qx-icon-btn ${selectedMuted ? "qx-icon-btn--active" : ""}`}
-              title={selectedMuted ? "Unmute" : "Mute"}
-              onClick={setMute}
-            >
-              {selectedMuted
-                ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23M12 19v4M8 23h8"/></svg>
-                : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
-              }
-            </button>
-            <div className="qx-theme-select-wrap">
-              <select value={selectedTheme} onChange={(e) => setTheme(e.target.value)} className="qx-theme-select">
-                {THEMES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-              </select>
-            </div>
-            <button type="button" className="qx-icon-btn qx-icon-btn--danger" title="Clear history" onClick={deleteChatHistory}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-            </button>
-          </div>
-        ) : (
-          <div className="qx-chat-actions">
-            <span className="qx-encryption-badge">Community thread</span>
-            {activeThreadType === "group" && (
-              <button type="button" className="qx-btn qx-btn--danger-soft" onClick={leaveGroup}>
-                Leave Group
-              </button>
-            )}
-            {activeThreadType === "channel" && (
-              <button type="button" className="qx-btn" onClick={() => toggleFollowChannel(selectedChannel)}>
-                {(selectedChannel?.followerIds || []).includes(authUser.uid) ? "Unfollow" : "Follow"}
-              </button>
-            )}
-          </div>
-        )}
-      </header>
-
-      {/* ── Toolbar ── */}
-      <div className="qx-chat-toolbar">
-        <div className="qx-chat-search-wrap">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="qx-search-icon-sm"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} placeholder="Search in conversation…" />
-          {chatSearch && <button type="button" className="qx-search-clear" onClick={() => setChatSearch("")}>✕</button>}
-        </div>
-        <div className="qx-encryption-badge">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-          E2E Encrypted
-        </div>
-      </div>
-
-      {/* ── Call logs panel ── */}
-      {showCallLogs && activeThreadType === "direct" && (
+      {activeThreadType === "group" && showGroupMembers && (
         <div className="qx-call-logs-panel">
           <div className="qx-call-logs-header">
-            <h4>Call History</h4>
-            <button className="qx-call-logs-close" onClick={() => setShowCallLogs(false)}>✕</button>
+            <h4>Group members · {(selectedGroup?.memberIds || []).length}</h4>
+            <button className="qx-call-logs-close" onClick={() => setShowGroupMembers(false)}>✕</button>
           </div>
           <div className="qx-call-logs-list">
-            {callLogs.length === 0 ? (
-              <div className="qx-call-logs-empty"><p>No call history yet</p></div>
-            ) : (
-              callLogs.map((log) => (
-                <div key={log.id} className={`qx-call-log-item ${log.status === "missed" ? "qx-call-log-item--missed" : ""}`}>
-                  <div className="qx-call-log-icon">{getCallIcon(log)}</div>
-                  <div className="qx-call-log-details">
-                    <div className="qx-call-log-type">{log.type === "video" ? "Video Call" : "Voice Call"}</div>
-                    <div className="qx-call-log-status">{getCallStatusText(log)}</div>
-                    <div className="qx-call-log-time">
-                      {formatCallTime(log.endedAt || log.startedAt)}
-                    </div>
-                  </div>
-                  <div className="qx-call-log-actions">
-                    <button className="qx-call-log-callback" onClick={() => startCall(log.type)} title="Call back">
-                      {log.type === "video" ? "🎥" : "📞"}
-                    </button>
-                  </div>
+            <div className="qx-call-log-item">
+              <div className="qx-call-log-details">
+                <div className="qx-call-log-type">Group admin(s)</div>
+                <div className="qx-call-log-status">
+                  {(selectedGroup?.admins || [])
+                    .map((id) => usersById.get(id)?.displayName || "Unknown")
+                    .join(", ") || "None"}
                 </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Call banner (incoming / active) ── */}
-      {activeThreadType === "direct" && selectedCall && selectedCall.status !== "ended" && (
-        <div className={`qx-call-banner qx-call-banner--${selectedCall.status}`}>
-          <div className="qx-call-info">
-            <div className="qx-call-icon">{selectedCall.type === "video" ? "🎥" : "📞"}</div>
-            <div>
-              <strong>{selectedCall.type === "video" ? "Video" : "Voice"} Call</strong>
-              <span className="qx-call-status">
-                {selectedCall.status === "ringing"
-                  ? selectedCall.from === authUser.uid
-                    ? `Calling ${selectedUser?.displayName}…`
-                    : "Incoming call…"
-                  : selectedCall.status === "active"
-                  ? `In progress · ${formatCallDuration(callDurationSec) || "00:00"}`
-                  : selectedCall.status}
-              </span>
+              </div>
             </div>
-          </div>
-          <div className="qx-call-controls">
-            {selectedCall.to === authUser.uid && selectedCall.status === "ringing" && (
-              <>
-                <button type="button" className="qx-call-accept" onClick={acceptCall}>Accept</button>
-                <button type="button" className="qx-call-decline" onClick={endCall}>Decline</button>
-              </>
-            )}
-            {selectedCall.from === authUser.uid && selectedCall.status === "ringing" && (
-              <button type="button" className="qx-call-end" onClick={endCall}>Cancel</button>
-            )}
-            {selectedCall.status === "active" && (
-              <>
-                <button type="button" className="qx-call-mute" onClick={toggleMute} title={isMuted ? "Unmute" : "Mute"}>
-                  {isMuted ? "🔇" : "🎤"}
-                </button>
-                {selectedCall.type === "video" && (
-                  <button type="button" className="qx-cam-toggle" onClick={toggleVideo} title={isVideoOff ? "Camera on" : "Camera off"}>
-                    {isVideoOff ? "📷❌" : "📷"}
-                  </button>
-                )}
-                <button type="button" className="qx-call-end" onClick={endCall}>End Call</button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Video panels ── */}
-      {activeThreadType === "direct" && (localCallStream || remoteCallStream) && selectedCall?.type === "video" && (
-        <div className="qx-call-media">
-          <div className="qx-video-wrap">
-            <video ref={remoteVideoRef} autoPlay playsInline className="qx-video-main" />
-            <video ref={localVideoRef}  autoPlay muted playsInline className="qx-video-pip" />
-          </div>
-        </div>
-      )}
-
-      {/* ── Messages ── */}
-      <section className="qx-messages">
-        {visibleMessages.length === 0 && (
-          <div className="qx-messages-empty">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="40" height="40"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-            <p>No messages yet. Say hello!</p>
-          </div>
-        )}
-
-        {visibleMessages.map((msg, index) => {
-          if ((msg.deletedFor || []).includes(authUser.uid)) return null;
-          const isMine   = msg.senderId === authUser.uid;
-          const prevMsg  = visibleMessages[index - 1];
-          const showDate = !prevMsg || formatDate(msg.createdAt) !== formatDate(prevMsg?.createdAt);
-          const isRead   = selectedUser ? (msg.readBy || []).includes(selectedUser.uid) : false;
-
-          return (
-            <div key={msg.id}>
-              {showDate && (
-                <div className="qx-date-divider"><span>{formatDate(msg.createdAt)}</span></div>
-              )}
-
-              {/* ── Call message (inline in chat) ── */}
-              {msg.type === "call" ? (
-                <div style={{ display: "flex", justifyContent: "center", margin: "8px 0" }}>
-                  <div style={{
-                    display:         "flex",
-                    alignItems:      "center",
-                    gap:             "10px",
-                    background:      "rgba(255,255,255,0.07)",
-                    border:          `1px solid ${msg.callStatus === "missed" ? "rgba(255,80,80,0.35)" : "rgba(255,255,255,0.12)"}`,
-                    borderRadius:    "20px",
-                    padding:         "8px 18px",
-                    fontSize:        "0.8rem",
-                    color:           msg.callStatus === "missed" ? "#ff6b6b" : "rgba(255,255,255,0.7)",
-                    backdropFilter:  "blur(8px)",
-                    cursor:          "default",
-                    userSelect:      "none",
-                  }}>
-                    <span style={{ fontSize: "1.1rem" }}>
-                      {msg.callType === "video" ? "🎥" : msg.callStatus === "missed" ? "📵" : "📞"}
-                    </span>
-                    <div>
-                      <div style={{ fontWeight: 600, color: "inherit" }}>
-                        {msg.callStatus === "missed"
-                          ? "Missed call"
-                          : msg.callStatus === "cancelled"
-                          ? "Cancelled call"
-                          : msg.callType === "video"
-                          ? "Video call"
-                          : "Voice call"}
-                      </div>
-                      {msg.callStatus === "completed" && msg.duration > 0 && (
-                        <div style={{ opacity: 0.7, fontSize: "0.75rem" }}>
-                          {formatCallDuration(msg.duration)}
-                        </div>
-                      )}
-                      <div style={{ opacity: 0.5, fontSize: "0.7rem" }}>
-                        {formatTime(msg.createdAt)}
-                      </div>
+            {groupMemberUsers.map((member) => {
+              const memberIsAdmin = (selectedGroup?.admins || []).includes(member.uid);
+              const isMe = member.uid === authUser.uid;
+              return (
+                <div key={member.uid} className="qx-call-log-item">
+                  <div className="qx-call-log-details">
+                    <div className="qx-call-log-type">
+                      {member.displayName || member.email || "Member"} {isMe ? "(You)" : ""}
                     </div>
-                    <button
-                      onClick={() => startCall(msg.callType)}
-                      style={{
-                        background: "rgba(77,127,255,0.2)",
-                        border:     "1px solid rgba(77,127,255,0.4)",
-                        borderRadius: "50%",
-                        width: "28px", height: "28px",
-                        cursor: "pointer",
-                        color: "#4d7fff",
-                        fontSize: "0.8rem",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                      }}
-                      title={`Call back (${msg.callType})`}
-                    >
-                      {msg.callType === "video" ? "🎥" : "📞"}
-                    </button>
+                    <div className="qx-call-log-status">
+                      {memberIsAdmin ? "Admin" : "Member"} · {member.email || member.phoneNumber || "No contact"}
+                    </div>
                   </div>
-                </div>
-              ) : (
-                /* ── Regular message ── */
-                <div className={`qx-msg-row ${isMine ? "qx-msg-row--mine" : "qx-msg-row--theirs"}`}>
-                  {!isMine && (
-                    <div className="qx-msg-avatar">
-                      {activeThreadType === "direct" && selectedUser?.photoURL
-                        ? <img src={selectedUser.photoURL} alt={selectedUser.displayName} />
-                        : <span>
-                            {activeThreadType === "group"
-                              ? "👥"
-                              : activeThreadType === "channel"
-                              ? "📣"
-                              : (selectedUser?.displayName || "U").charAt(0).toUpperCase()}
-                          </span>
-                      }
+                  {isGroupAdmin && !isMe && (
+                    <div className="qx-call-log-actions">
+                      <button
+                        className="qx-call-log-callback"
+                        title={memberIsAdmin ? "Remove admin" : "Make admin"}
+                        onClick={() => toggleGroupAdmin(member.uid, !memberIsAdmin)}
+                      >
+                        {memberIsAdmin ? "⬇️" : "⬆️"}
+                      </button>
+                      <button
+                        className="qx-call-log-callback"
+                        title="Remove from group"
+                        onClick={() => removeGroupMember(member.uid)}
+                      >
+                        ➖
+                      </button>
                     </div>
                   )}
-                  <div className="qx-msg-content">
-                    {msg.replyTo && (
-                      <div className="qx-reply-preview">
-                        <span className="qx-reply-bar" />
-                        <span>
-                          {msg.replyTo.senderId === authUser.uid ? "You" : msg.replyTo.senderName || activeThreadName}:{" "}
-                          {msg.replyTo.text?.slice(0, 80)}
-                        </span>
-                      </div>
-                    )}
-                    <div className={`qx-bubble ${isMine ? "qx-bubble--mine" : "qx-bubble--theirs"}`}>
-                      {msg.forwardedFrom && (
-                        <div className="qx-forwarded-label">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 014-4h12"/></svg>
-                          Forwarded from {msg.forwardedFrom}
-                        </div>
-                      )}
-                      {msg.type === "image" && msg.fileURL && (
-                        <img
-                          src={msg.fileURL}
-                          alt={msg.fileName || "Image"}
-                          className="qx-msg-image"
-                          onClick={() => setImagePreview(msg.fileURL)}
-                        />
-                      )}
-                      {msg.type === "file" && msg.fileURL && (
-                        <a href={msg.fileURL} target="_blank" rel="noreferrer" className="qx-file-attach">
-                          <div className="qx-file-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                          </div>
-                          <div className="qx-file-info">
-                            <span className="qx-file-name">{msg.fileName || "File"}</span>
-                            {msg.fileSize && <span className="qx-file-size">{(msg.fileSize / 1024).toFixed(1)} KB</span>}
-                          </div>
-                        </a>
-                      )}
-                      {!!msg.text && <p className="qx-msg-text">{msg.text}</p>}
-                      <div className="qx-msg-meta">
-                        <span className="qx-msg-time">{formatTime(msg.createdAt)}</span>
-                        {msg.editedAt && <span className="qx-msg-edited">edited</span>}
-                        {(msg.starredBy || []).includes(authUser.uid) && <span className="qx-msg-flag">⭐</span>}
-                        {(msg.pinnedBy || []).includes(authUser.uid) && <span className="qx-msg-flag">📌</span>}
-                        {isMine && (
-                          <span className={`qx-read-receipt ${isRead ? "qx-read-receipt--read" : ""}`}>
-                            {isRead ? "✓✓" : "✓"}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="qx-msg-actions">
-                      <button
-                        type="button"
-                        className="qx-msg-action-btn"
-                        title="Reply"
-                        onClick={() => {
-                          setReplyTo(msg);
-                          setReplyTargetUser(msg.senderId ? usersById.get(msg.senderId) || null : null);
-                        }}
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 00-4-4H4"/></svg>
-                      </button>
-                      {activeThreadType === "group" && !isMine && (
-                        <button
-                          type="button"
-                          className="qx-msg-action-btn"
-                          title="Reply privately"
-                          onClick={() => replyPrivately(msg)}
-                        >
-                          🔒
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="qx-msg-action-btn"
-                        title="Forward"
-                        onClick={() => setForwardOpenFor(forwardOpenFor === msg.id ? null : msg.id)}
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 014-4h12"/></svg>
-                      </button>
-                      {isMine && !msg.deletedForEveryone && (
-                        <>
-                          <button
-                            type="button"
-                            className="qx-msg-action-btn"
-                            title="Edit"
-                            onClick={() => { setMessageInput(msg.text || ""); setEditingMessageId(msg.id); }}
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            type="button"
-                            className="qx-msg-action-btn qx-msg-action-btn--danger"
-                            title="Delete for everyone"
-                            onClick={() => deleteForEveryone(msg)}
-                          >
-                            🚫
-                          </button>
-                        </>
-                      )}
-                      {!isMine && (
-                        <button
-                          type="button"
-                          className="qx-msg-action-btn"
-                          title="Delete for me"
-                          onClick={() => deleteForMe(msg)}
-                        >
-                          🗑️
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="qx-msg-action-btn"
-                        title="Star"
-                        onClick={() => toggleMessageFlag(msg, "starredBy")}
-                      >
-                        ⭐
-                      </button>
-                      <button
-                        type="button"
-                        className="qx-msg-action-btn"
-                        title="Pin"
-                        onClick={() => toggleMessageFlag(msg, "pinnedBy")}
-                      >
-                        📌
-                      </button>
-                    </div>
-                    {forwardOpenFor === msg.id && (
-                      <div className="qx-forward-panel">
-                        <p className="qx-forward-label">Forward to:</p>
-                        {contacts.filter((c) => c.uid !== selectedUser?.uid).map((c) => (
-                          <button key={c.uid} type="button" className="qx-forward-contact" onClick={() => forwardMessage(msg, c.uid)}>
-                            <div className="qx-forward-avatar">{(c.displayName || "U").charAt(0).toUpperCase()}</div>
-                            {c.displayName}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                </div>
+              );
+            })}
+            {isGroupAdmin && (
+              <>
+                <div className="qx-call-log-item">
+                  <div className="qx-call-log-details">
+                    <div className="qx-call-log-type">Add more members</div>
+                    <div className="qx-call-log-status">Select from your contacts list</div>
                   </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
-        <div ref={messagesEndRef} />
-      </section>
-
-      {/* ── Typing indicator ── */}
-      <div className="qx-typing-row">
-        {activeThreadType === "direct" && selectedPartnerTyping && (
-          <div className="qx-typing-indicator">
-            <div className="qx-typing-dots"><span /><span /><span /></div>
-            <span>{selectedUser?.displayName} is typing…</span>
+                {contacts
+                  .filter((entry) => !(selectedGroup?.memberIds || []).includes(entry.uid))
+                  .map((entry) => (
+                    <div key={entry.uid} className="qx-call-log-item">
+                      <div className="qx-call-log-details">
+                        <div className="qx-call-log-type">{entry.displayName || entry.email || "Contact"}</div>
+                        <div className="qx-call-log-status">{entry.email || entry.phoneNumber || "No contact"}</div>
+                      </div>
+                      <div className="qx-call-log-actions">
+                        <button className="qx-call-log-callback" title="Add member" onClick={() => addGroupMember(entry.uid)}>
+                          ➕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </>
+            )}
           </div>
-        )}
-      </div>
-
-      {/* ── Reply bar ── */}
-      {replyTo && (
-        <div className="qx-reply-bar-wrap">
-          <div className="qx-reply-preview-bar">
-            <span className="qx-reply-accent" />
-            <div>
-              <span className="qx-reply-to-name">
-                {replyTo.senderId === authUser.uid ? "You" : replyTargetUser?.displayName || activeThreadName}
-              </span>
-              <span className="qx-reply-to-text">{replyTo.text?.slice(0, 100)}</span>
-            </div>
-          </div>
-          <button type="button" className="qx-reply-close" onClick={() => { setReplyTo(null); setReplyTargetUser(null); }}>✕</button>
         </div>
       )}
 
-      {/* ── Composer ── */}
-      <footer className="qx-composer" ref={composerRef}>
-        <div className="qx-composer-inner">
-          <div className="qx-composer-tools">
-            <button type="button" className="qx-composer-btn" title="Emoji" onClick={() => setShowEmojiPicker((p) => !p)}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-            </button>
-            <label htmlFor="attachment" className="qx-composer-btn" title="Attach file">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-            </label>
-            <input
-              id="attachment" type="file" hidden
-              accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip"
-              onChange={(e) => {
-                if (e.target.files?.[0]) {
-                  sendMessage({ file: e.target.files[0] });
-                  e.target.value = "";
-                }
-              }}
-            />
-          </div>
-          <div className="qx-input-wrap">
-            <input
-              type="text"
-              value={messageInput}
-              onChange={(e) => onMessageChange(e.target.value)}
-              placeholder={editingMessageId ? "Edit your message..." : "Type a secure message…"}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (editingMessageId) {
-                    const msg = messages.find((entry) => entry.id === editingMessageId);
-                    if (msg) editMessage(msg);
-                    return;
-                  }
-                  sendMessage({ text: messageInput });
-                }
-              }}
-            />
-          </div>
-          <button
-            type="button"
-            className={`qx-send-btn ${messageInput.trim() || sendingAttachment ? "qx-send-btn--active" : ""}`}
-            onClick={() => {
-              if (editingMessageId) {
-                const msg = messages.find((entry) => entry.id === editingMessageId);
-                if (msg) editMessage(msg);
-                return;
-              }
-              sendMessage({ text: messageInput });
-            }}
-            disabled={sendingAttachment}
-          >
-            {sendingAttachment
-              ? <div className="qx-spinner-sm" />
-              : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            }
-          </button>
-        </div>
+      <ChatCallPanels
+        showCallLogs={showCallLogs}
+        activeThreadType={activeThreadType}
+        callLogs={callLogs}
+        setShowCallLogs={setShowCallLogs}
+        getCallIcon={getCallIcon}
+        getCallStatusText={getCallStatusText}
+        formatCallTime={formatCallTime}
+        startCall={startCall}
+        selectedCall={selectedCall}
+        authUser={authUser}
+        selectedUser={selectedUser}
+        formatCallDuration={formatCallDuration}
+        callDurationSec={callDurationSec}
+        acceptCall={acceptCall}
+        endCall={endCall}
+        toggleMute={toggleMute}
+        isMuted={isMuted}
+        toggleVideo={toggleVideo}
+        isVideoOff={isVideoOff}
+        localCallStream={localCallStream}
+        remoteCallStream={remoteCallStream}
+        remoteVideoRef={remoteVideoRef}
+        localVideoRef={localVideoRef}
+      />
 
-        {showEmojiPicker && (
-          <div className="qx-emoji-picker">
-            <Picker
-              data={data}
-              onEmojiSelect={(emoji) => onMessageChange(messageInput + emoji.native)}
-              theme="dark"
-              previewPosition="none"
-            />
-          </div>
-        )}
+      <ChatMessages
+        visibleMessages={visibleMessages}
+        authUser={authUser}
+        selectedUser={selectedUser}
+        activeThreadType={activeThreadType}
+        formatDate={formatDate}
+        formatTime={formatTime}
+        formatCallDuration={formatCallDuration}
+        startCall={startCall}
+        activeThreadName={activeThreadName}
+        usersById={usersById}
+        setImagePreview={setImagePreview}
+        setReplyTo={setReplyTo}
+        setReplyTargetUser={setReplyTargetUser}
+        replyPrivately={replyPrivately}
+        setForwardOpenFor={setForwardOpenFor}
+        forwardOpenFor={forwardOpenFor}
+        deleteForEveryone={deleteForEveryone}
+        deleteForMe={deleteForMe}
+        toggleMessageFlag={toggleMessageFlag}
+        contacts={contacts}
+        forwardMessage={forwardMessage}
+        messagesEndRef={messagesEndRef}
+        setMessageInput={setMessageInput}
+        setEditingMessageId={setEditingMessageId}
+      />
 
-        {sendingAttachment && uploadProgress > 0 && (
-          <div className="qx-upload-progress">
-            <div className="qx-upload-bar"><div className="qx-upload-fill" style={{ width: `${uploadProgress}%` }} /></div>
-            <span>{uploadProgress}%</span>
-          </div>
-        )}
-      </footer>
-
-      {/* ── Image lightbox ── */}
-      {imagePreview && (
-        <div className="qx-lightbox" onClick={() => setImagePreview(null)}>
-          <button type="button" className="qx-lightbox-close" onClick={() => setImagePreview(null)}>✕</button>
-          <img src={imagePreview} alt="Preview" onClick={(e) => e.stopPropagation()} />
-        </div>
-      )}
-
-      {/* ── Status toast ── */}
-      {statusText && <div className="qx-status-toast">{statusText}</div>}
+      <ChatComposer
+        activeThreadType={activeThreadType}
+        selectedPartnerTyping={selectedPartnerTyping}
+        selectedUser={selectedUser}
+        replyTo={replyTo}
+        authUser={authUser}
+        replyTargetUser={replyTargetUser}
+        activeThreadName={activeThreadName}
+        setReplyTo={setReplyTo}
+        setReplyTargetUser={setReplyTargetUser}
+        composerRef={composerRef}
+        setShowEmojiPicker={setShowEmojiPicker}
+        showEmojiPicker={showEmojiPicker}
+        messageInput={messageInput}
+        onMessageChange={onMessageChange}
+        editingMessageId={editingMessageId}
+        messages={messages}
+        editMessage={editMessage}
+        sendMessage={sendMessage}
+        sendingAttachment={sendingAttachment}
+        uploadProgress={uploadProgress}
+        imagePreview={imagePreview}
+        setImagePreview={setImagePreview}
+        statusText={statusText}
+      />
     </div>
   );
 };
