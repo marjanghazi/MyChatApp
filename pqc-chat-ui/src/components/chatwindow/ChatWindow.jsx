@@ -608,19 +608,27 @@ const ChatWindow = ({
     if (!file) throw new Error("File missing.");
     if (file.size > MAX_FILE_SIZE_BYTES) throw new Error("File too large. Max 15 MB.");
 
-    const storageRef  = ref(storage, `${path}/${Date.now()}_${file.name}`);
-    const uploadTask  = uploadBytesResumable(storageRef, file);
+    const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
 
     return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        uploadTask.cancel();
+        setUploadProgress(0);
+        reject(new Error("Upload timed out. Check Firebase Storage bucket/rules and try again."));
+      }, 45000);
+
       uploadTask.on(
         "state_changed",
         (s) => setUploadProgress(Math.round((s.bytesTransferred / s.totalBytes) * 100)),
         async (err) => {
+          clearTimeout(timeoutId);
           try { await deleteObject(storageRef); } catch {}
           setUploadProgress(0);
           reject(err);
         },
         async () => {
+          clearTimeout(timeoutId);
           const url = await getDownloadURL(uploadTask.snapshot.ref);
           setUploadProgress(0);
           resolve(url);
@@ -653,9 +661,9 @@ const ChatWindow = ({
   const sendMessage = async ({ text = "", file = null, forwardedFrom = null } = {}) => {
     if (!db || !authUser?.uid || !profile) {
       setStatusText("Database connection error");
-      return;
+      return false;
     }
-    if (!text.trim() && !file) return;
+    if (!text.trim() && !file) return false;
 
     // ── Group ──
     if (activeThreadType === "group" && selectedGroup) {
@@ -687,15 +695,16 @@ const ChatWindow = ({
         setReplyTargetUser(null);
       } catch (e) {
         setStatusText("Failed to send: " + e.message);
+        return false;
       }
-      return;
+      return true;
     }
 
     // ── Channel ──
     if (activeThreadType === "channel" && selectedChannel) {
       if (selectedChannel.ownerId !== authUser.uid) {
         setStatusText("Only channel owner can publish posts.");
-        return;
+        return false;
       }
       try {
         const channelRef = doc(db, "channels", selectedChannel.id);
@@ -718,15 +727,16 @@ const ChatWindow = ({
         setTimeout(() => setStatusText(""), 2000);
       } catch (e) {
         setStatusText("Failed to send post: " + e.message);
+        return false;
       }
-      return;
+      return true;
     }
 
     // ── Direct ──
     if (activeThreadType === "direct") {
       if (!selectedUser?.uid || !selectedConversationId) {
         setStatusText("No conversation selected.");
-        return;
+        return false;
       }
 
       let payload = { type: "text", text: text.trim() };
@@ -749,7 +759,7 @@ const ChatWindow = ({
         } catch (err) {
           setStatusText(err?.message || "Attachment upload failed.");
           setSendingAttachment(false);
-          return;
+          return false;
         } finally {
           setSendingAttachment(false);
         }
@@ -795,8 +805,12 @@ const ChatWindow = ({
         console.error("sendMessage error:", e);
         setStatusText("Failed to send: " + e.message);
         setTimeout(() => setStatusText(""), 3000);
+        return false;
       }
+      return true;
     }
+
+    return false;
   };
 
   const sendDirectMessageToUser = async ({ targetUser, payload }) => {

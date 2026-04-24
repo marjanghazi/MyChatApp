@@ -534,14 +534,28 @@ function App() {
   const uploadToStorage = async (path, file) => {
     if (!file) throw new Error("File missing.");
     if (file.size > MAX_FILE_SIZE_BYTES) throw new Error("File too large. Max 15 MB.");
-    const storageRef  = ref(storage, `${path}/${Date.now()}_${file.name}`);
-    const uploadTask  = uploadBytesResumable(storageRef, file);
+
+    const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
     return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        uploadTask.cancel();
+        reject(new Error("Upload timed out. Check Firebase Storage bucket/rules and try again."));
+      }, 45000);
+
       uploadTask.on(
         "state_changed",
         () => {},
-        async (err) => { try { await deleteObject(storageRef); } catch {} reject(err); },
-        async ()   => { resolve(await getDownloadURL(uploadTask.snapshot.ref)); }
+        async (err) => {
+          clearTimeout(timeoutId);
+          try { await deleteObject(storageRef); } catch {}
+          reject(err);
+        },
+        async () => {
+          clearTimeout(timeoutId);
+          resolve(await getDownloadURL(uploadTask.snapshot.ref));
+        }
       );
     });
   };

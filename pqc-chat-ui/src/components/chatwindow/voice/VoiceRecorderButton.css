@@ -1,3 +1,9 @@
+.qx-voice-recorder-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .qx-composer-btn--voice {
   position: relative;
 }
@@ -22,4 +28,41 @@
   border-radius: 50%;
   background: #ff4d4d;
   box-shadow: 0 0 8px rgba(255, 77, 77, 0.8);
+}
+
+.qx-voice-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(12, 17, 36, 0.8);
+}
+
+.qx-voice-preview {
+  width: 170px;
+  height: 30px;
+}
+
+.qx-voice-action {
+  border: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.qx-voice-action--discard {
+  background: rgba(255, 107, 107, 0.2);
+  color: #ff8f8f;
+}
+
+.qx-voice-action--send {
+  background: rgba(77, 127, 255, 0.2);
+  color: #8ab0ff;
 }
