@@ -26,6 +26,11 @@ npm start
 - `POST /api/community/channels/:channelId/follow`
 - `POST /api/community/channels/:channelId/unfollow`
 
-## Notes
-- Keep all backend logic in this folder so both web and mobile apps call the same API layer.
-- `pqc-chat-ui/` should stay frontend-only.
+## Frontend integration
+In `pqc-chat-ui/.env` set:
+```bash
+REACT_APP_API_BASE_URL=http://localhost:4000
+```
+
+## What remains to make backend fully authoritative
+To make backend handle all business logic, migrate all remaining frontend direct Firebase reads/writes to backend endpoints (conversations, messages, calls, user profile/search, uploads).

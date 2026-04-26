@@ -1,47 +1,34 @@
-import { addDoc, arrayRemove, arrayUnion, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { db } from "../firebase";
+import { apiRequest } from "./apiClient";
 
-export const createGroup = async ({ name, description, memberIds, creatorId }) => {
-  const payload = {
-    name: name.trim(),
-    description: description.trim(),
-    memberIds: Array.from(new Set([creatorId, ...memberIds])),
-    admins: [creatorId],
-    createdBy: creatorId,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    lastMessage: "",
-    lastMessageAt: null,
-  };
-
-  return addDoc(collection(db, "groups"), payload);
-};
-
-export const createChannel = async ({ name, description, creatorId }) => {
-  const payload = {
-    name: name.trim(),
-    description: description.trim(),
-    ownerId: creatorId,
-    followerIds: [creatorId],
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    lastPost: "",
-    lastPostAt: null,
-  };
-
-  return addDoc(collection(db, "channels"), payload);
-};
-
-export const followChannel = async (channelId, userId) => {
-  await updateDoc(doc(db, "channels", channelId), {
-    followerIds: arrayUnion(userId),
-    updatedAt: serverTimestamp(),
+export const createGroup = async ({ name, description, memberIds, creatorId }) =>
+  apiRequest("/api/community/groups", {
+    method: "POST",
+    body: JSON.stringify({
+      name: name.trim(),
+      description: description.trim(),
+      memberIds,
+      creatorId,
+    }),
   });
-};
 
-export const unfollowChannel = async (channelId, userId) => {
-  await updateDoc(doc(db, "channels", channelId), {
-    followerIds: arrayRemove(userId),
-    updatedAt: serverTimestamp(),
+export const createChannel = async ({ name, description, creatorId }) =>
+  apiRequest("/api/community/channels", {
+    method: "POST",
+    body: JSON.stringify({
+      name: name.trim(),
+      description: description.trim(),
+      creatorId,
+    }),
   });
-};
+
+export const followChannel = async (channelId, userId) =>
+  apiRequest(`/api/community/channels/${channelId}/follow`, {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  });
+
+export const unfollowChannel = async (channelId, userId) =>
+  apiRequest(`/api/community/channels/${channelId}/unfollow`, {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  });

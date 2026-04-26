@@ -2,11 +2,12 @@
 
 Repository structure:
 
-- `pqc-chat-ui/` — frontend-only React application.
-- `backend/` — backend services and backend configuration (shared for web + mobile apps).
+- `pqc-chat-ui/` — frontend-only React application (UI + API calls).
+- `backend/` — single backend source (API, rules/indexes, server-side business logic).
 
-## Backend
-All backend artifacts now live under `backend/`, including Firebase rules and indexes.
+## Goal Architecture
+Frontend clients (web + mobile) should call backend APIs only.
 
-## Frontend
-`pqc-chat-ui/` contains only frontend application code and assets.
+## Migration Status
+- ✅ Community operations (`create group/channel`, `follow/unfollow`) are now routed through backend APIs.
+- ⏳ Remaining direct Firebase usage in frontend should be migrated to backend endpoints in the next steps.
