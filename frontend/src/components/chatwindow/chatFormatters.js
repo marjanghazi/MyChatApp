@@ -1,5 +1,43 @@
-export const toDate = (v) =>
-  !v ? null : typeof v?.toDate === "function" ? v.toDate() : new Date(v);
+const fromFirestoreTimestampObject = (value) => {
+  if (!value || typeof value !== "object") return null;
+
+  const seconds =
+    typeof value.seconds === "number"
+      ? value.seconds
+      : typeof value._seconds === "number"
+      ? value._seconds
+      : null;
+
+  const nanos =
+    typeof value.nanoseconds === "number"
+      ? value.nanoseconds
+      : typeof value._nanoseconds === "number"
+      ? value._nanoseconds
+      : 0;
+
+  if (seconds == null) return null;
+  return new Date(seconds * 1000 + Math.floor(nanos / 1_000_000));
+};
+
+export const toDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value?.toDate === "function") {
+    const converted = value.toDate();
+    return Number.isNaN(converted?.getTime?.()) ? null : converted;
+  }
+
+  if (typeof value === "number") {
+    const fromNumber = new Date(value);
+    return Number.isNaN(fromNumber.getTime()) ? null : fromNumber;
+  }
+
+  const fromFirestoreObject = fromFirestoreTimestampObject(value);
+  if (fromFirestoreObject) return fromFirestoreObject;
+
+  const fromString = new Date(value);
+  return Number.isNaN(fromString.getTime()) ? null : fromString;
+};
 
 export const formatTime = (dateValue) => {
   const d = toDate(dateValue);

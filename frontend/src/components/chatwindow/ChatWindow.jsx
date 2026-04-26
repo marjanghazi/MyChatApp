@@ -4,31 +4,6 @@ import "./chatwindow.header.css";
 import "./chatwindow.messages.css";
 import "./chatwindow.composer.css";
 import "./chatwindow.overlays.css";
-import {
-  addDoc,
-  arrayUnion,
-  arrayRemove,
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  increment,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-  writeBatch,
-} from "firebase/firestore";
-import {
-  deleteObject,
-  getDownloadURL,
-  ref,
-  uploadBytesResumable,
-} from "firebase/storage";
-import { db, storage } from "../../firebase";
 import { ICE_SERVERS, MAX_FILE_SIZE_BYTES, THEMES } from "./chatConstants";
 import {
   conversationIdFor,
@@ -45,6 +20,24 @@ import ChatToolbar from "./ChatToolbar";
 import ChatCallPanels from "./ChatCallPanels";
 import ChatMessages from "./ChatMessages";
 import ChatComposer from "./ChatComposer";
+import {
+  deleteChatMessageForEveryone,
+  deleteChatMessageForMe,
+  editChatMessage,
+  sendChatMessage,
+  toggleChatMessageFlag,
+  fetchThreadMessages,
+  fetchCallLogs,
+  fetchSignals,
+  deleteSignal as deleteSignalApi,
+  markConversationSeen,
+  updateConversationMeta,
+  addConversationCallLog,
+  addConversationMessage,
+  addConversationSignal,
+  clearConversationForUser,
+} from "../../services/chatService";
+import { uploadMedia } from "../../services/mediaService";
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -185,152 +178,148 @@ const ChatWindow = ({
     return () => clearInterval(callDurationIntervalRef.current);
   }, [selectedCall?.status, selectedCall?.startedAt]);
 
-  // ── Messages subscription — direct ───────────────────────────────────────
+  // ── Messages polling — direct ───────────────────────────────────────────
   useEffect(() => {
-    if (!db || !authUser?.uid || !selectedUser?.uid || activeThreadType !== "direct") return;
-    if (!selectedConversationId) return;
+    if (!authUser?.uid || !selectedUser?.uid || activeThreadType !== "direct" || !selectedConversationId) return undefined;
 
-    const conversationRef = doc(db, "conversations", selectedConversationId);
-    setDoc(conversationRef, {
-      participants:      [authUser.uid, selectedUser.uid],
-      participantPhones: [profile?.phoneNumber || "", selectedUser.phoneNumber || ""],
-      unreadBy:          { [authUser.uid]: 0 },
-      createdAt:         serverTimestamp(),
-      updatedAt:         serverTimestamp(),
-    }, { merge: true }).catch(console.error);
-
-    const q = query(collection(conversationRef, "messages"), orderBy("createdAt", "asc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const next = snapshot.docs
-        .map((e) => ({ id: e.id, ...e.data() }))
-        .filter((e) => !(e.deletedFor || []).includes(authUser.uid));
-      setMessages(next);
-
-      const unread = snapshot.docs.filter((e) => {
-        const d = e.data();
-        return d.receiverId === authUser.uid && !(d.readBy || []).includes(authUser.uid);
-      });
-      unread.forEach((e) =>
-        updateDoc(e.ref, {
-          deliveredTo: arrayUnion(authUser.uid),
-          readBy: arrayUnion(authUser.uid),
-          readAt: serverTimestamp(),
-        })
-      );
-      if (unread.length) {
-        setDoc(conversationRef, {
-          unreadBy: { [authUser.uid]: 0 },
-          lastMessageStatus: "seen",
-        }, { merge: true });
+    let alive = true;
+    const run = async () => {
+      try {
+        const { messages: next = [] } = await fetchThreadMessages("direct", selectedConversationId, authUser.uid);
+        if (!alive) return;
+        setMessages(next);
+        if (next.some((m) => m.receiverId === authUser.uid && !(m.readBy || []).includes(authUser.uid))) {
+          await markConversationSeen(selectedConversationId, authUser.uid);
+        }
+      } catch (error) {
+        console.error("direct polling error", error);
       }
-    });
-    return unsubscribe;
-  }, [authUser?.uid, selectedUser?.uid, activeThreadType, selectedConversationId, profile]);
+    };
 
-  // ── Messages subscription — group ────────────────────────────────────────
+    run();
+    const timer = setInterval(run, 1200);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [authUser?.uid, selectedUser?.uid, activeThreadType, selectedConversationId]);
+
+  // ── Messages polling — group ────────────────────────────────────────────
   useEffect(() => {
-    if (!db || !authUser?.uid || !selectedGroup || activeThreadType !== "group") return;
-    const q = query(collection(doc(db, "groups", selectedGroup.id), "messages"), orderBy("createdAt", "asc"));
-    return onSnapshot(q, (snapshot) =>
-      setMessages(snapshot.docs.map((e) => ({ id: e.id, ...e.data() })))
-    );
+    if (!authUser?.uid || !selectedGroup || activeThreadType !== "group") return undefined;
+    let alive = true;
+    const run = async () => {
+      try {
+        const { messages: next = [] } = await fetchThreadMessages("group", selectedGroup.id, authUser.uid);
+        if (alive) setMessages(next);
+      } catch (error) {
+        console.error("group polling error", error);
+      }
+    };
+    run();
+    const timer = setInterval(run, 1500);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, [authUser?.uid, selectedGroup, activeThreadType]);
 
-  // ── Messages subscription — channel ──────────────────────────────────────
+  // ── Messages polling — channel ──────────────────────────────────────────
   useEffect(() => {
-    if (!db || !authUser?.uid || !selectedChannel || activeThreadType !== "channel") return;
-    const q = query(collection(doc(db, "channels", selectedChannel.id), "posts"), orderBy("createdAt", "asc"));
-    return onSnapshot(q, (snapshot) =>
-      setMessages(snapshot.docs.map((e) => ({ id: e.id, ...e.data() })))
-    );
+    if (!authUser?.uid || !selectedChannel || activeThreadType !== "channel") return undefined;
+    let alive = true;
+    const run = async () => {
+      try {
+        const { messages: next = [] } = await fetchThreadMessages("channel", selectedChannel.id, authUser.uid);
+        if (alive) setMessages(next);
+      } catch (error) {
+        console.error("channel polling error", error);
+      }
+    };
+    run();
+    const timer = setInterval(run, 1500);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, [authUser?.uid, selectedChannel, activeThreadType]);
 
-  // ── Call logs subscription ────────────────────────────────────────────────
+  // ── Call logs polling ───────────────────────────────────────────────────
   useEffect(() => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
-    const logsRef = collection(doc(db, "conversations", selectedConversationId), "callLogs");
-    const q = query(logsRef, orderBy("createdAt", "desc"));
-    return onSnapshot(q, (snapshot) =>
-      setCallLogs(snapshot.docs.map((e) => ({ id: e.id, ...e.data() })))
-    );
-  }, [authUser?.uid, selectedConversationId]);
-
-  // ── Call signals subscription ─────────────────────────────────────────────
-  // FIX: ICE candidates buffered until remote description is applied.
-  useEffect(() => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
-
-    const conversationRef = doc(db, "conversations", selectedConversationId);
-    const signalsRef      = collection(conversationRef, "signals");
-    const q               = query(signalsRef, where("to", "==", authUser.uid));
-
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      for (const change of snapshot.docChanges()) {
-        if (change.type !== "added") continue;
-        const signal = change.doc.data();
-
-        try {
-          if (signal.type === "offer") {
-            // Caller's offer — just store it; don't touch the peer connection yet.
-            setIncomingOffer(signal.sdp);
-
-          } else if (signal.type === "answer" && peerConnectionRef.current) {
-            // FIX: use applyRemoteDescription to flush buffered ICE after this.
-            await applyRemoteDescription(peerConnectionRef.current, signal.sdp);
-            const currentCall = selectedCallRef.current;
-            if (currentCall && onUpdateCallState) onUpdateCallState({ ...currentCall, status: "active" });
-
-          } else if (signal.type === "ice") {
-            // FIX: buffer if peer connection doesn't exist OR remote desc not yet set.
-            if (peerConnectionRef.current && hasRemoteDescRef.current) {
-              try {
-                await peerConnectionRef.current.addIceCandidate(
-                  new RTCIceCandidate(signal.candidate)
-                );
-              } catch (e) {
-                console.warn("ICE candidate error:", e);
-              }
-            } else {
-              pendingIceCandidatesRef.current.push(signal.candidate);
-            }
-
-          } else if (signal.type === "hangup") {
-            const currentCall = selectedCallRef.current;
-            // Receiver side: save call log so both parties have a record.
-            if (currentCall) {
-              const status =
-                currentCall.status === "ringing"
-                  ? currentCall.from === authUser.uid ? "cancelled" : "missed"
-                  : "completed";
-              await saveCallLogOnly({
-                type:      currentCall.type,
-                direction: currentCall.to === authUser.uid ? "incoming" : "outgoing",
-                status,
-                startedAt: currentCall.startedAt,
-                endedAt:   serverTimestamp(),
-                duration:  callDurationSec,
-                callerId:  currentCall.from,
-                receiverId: currentCall.to,
-              });
-            }
-            stopCallMedia();
-            if (currentCall && onUpdateCallState)
-              onUpdateCallState({ ...currentCall, status: "ended" });
-            setStatusText("Call ended");
-            setTimeout(() => setStatusText(""), 3000);
-          }
-        } finally {
-          // Always delete the processed signal
-          await deleteDoc(change.doc.ref).catch(() => {});
-        }
+    if (!authUser?.uid || !selectedConversationId) return undefined;
+    let alive = true;
+    const run = async () => {
+      try {
+        const { logs = [] } = await fetchCallLogs(selectedConversationId);
+        if (alive) setCallLogs(logs);
+      } catch (error) {
+        console.error("call log polling error", error);
       }
-    });
-
-    return unsubscribe;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    };
+    run();
+    const timer = setInterval(run, 2000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, [authUser?.uid, selectedConversationId]);
 
-  // ═════════════════════════════════════════════════════════════════════════
+  // ── Call signals polling ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!authUser?.uid || !selectedConversationId) return undefined;
+
+    let alive = true;
+    const run = async () => {
+      try {
+        const { signals = [] } = await fetchSignals(selectedConversationId, authUser.uid);
+        for (const signal of signals) {
+          if (!alive) return;
+          try {
+            if (signal.type === "offer") {
+              setIncomingOffer(signal.sdp);
+            } else if (signal.type === "answer" && peerConnectionRef.current) {
+              await applyRemoteDescription(peerConnectionRef.current, signal.sdp);
+              const currentCall = selectedCallRef.current;
+              if (currentCall?.status !== "active") {
+                await setCallState({
+                  ...currentCall,
+                  status: "active",
+                  startedAt: currentCall?.startedAt || new Date().toISOString(),
+                });
+              }
+            } else if (signal.type === "candidate" && peerConnectionRef.current) {
+              const candidate = new RTCIceCandidate(signal.candidate);
+              if (!hasRemoteDescRef.current) {
+                pendingIceCandidatesRef.current.push(candidate);
+              } else {
+                await peerConnectionRef.current.addIceCandidate(candidate).catch(() => {});
+              }
+            } else if (signal.type === "hangup") {
+              await setCallState({
+                status: "ended",
+                endedAt: new Date().toISOString(),
+                endedBy: signal.from,
+                reason: signal.reason || "hangup",
+              });
+              stopCallMedia();
+            }
+          } finally {
+            await deleteSignalApi(selectedConversationId, signal.id).catch(() => {});
+          }
+        }
+      } catch (error) {
+        console.error("signal polling error", error);
+      }
+    };
+
+    run();
+    const timer = setInterval(run, 900);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [authUser?.uid, selectedConversationId]);
+
   // ── Call helpers ──────────────────────────────────────────────────────────
   // ═════════════════════════════════════════════════════════════════════════
 
@@ -378,17 +367,12 @@ const ChatWindow = ({
 
   /** Save only the call log subcollection entry (no chat message). */
   const saveCallLogOnly = async (callData) => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
+    if (!authUser?.uid || !selectedConversationId) return;
     try {
-      const conversationRef = doc(db, "conversations", selectedConversationId);
-      await setDoc(conversationRef, {
+      await updateConversationMeta(selectedConversationId, {
         participants: [authUser.uid, selectedUser?.uid],
-        updatedAt:    serverTimestamp(),
-      }, { merge: true });
-      await addDoc(collection(conversationRef, "callLogs"), {
-        ...callData,
-        createdAt: serverTimestamp(),
       });
+      await addConversationCallLog(selectedConversationId, callData);
     } catch (e) {
       console.error("saveCallLogOnly error:", e);
     }
@@ -399,30 +383,20 @@ const ChatWindow = ({
    * Called only by the party who explicitly ends the call (endCall).
    */
   const saveCallLogAndMessage = async (callData) => {
-    if (!db || !authUser?.uid || !selectedConversationId || !selectedUser?.uid) return;
+    if (!authUser?.uid || !selectedConversationId || !selectedUser?.uid) return;
     try {
-      const conversationRef = doc(db, "conversations", selectedConversationId);
-      await setDoc(conversationRef, {
+      await updateConversationMeta(selectedConversationId, {
         participants: [authUser.uid, selectedUser.uid],
-        updatedAt:    serverTimestamp(),
-      }, { merge: true });
-
-      // Log entry
-      await addDoc(collection(conversationRef, "callLogs"), {
-        ...callData,
-        createdAt: serverTimestamp(),
       });
-
-      // Chat message so the call shows inline in the conversation
-      await addDoc(collection(conversationRef, "messages"), {
-        type:       "call",
-        callType:   callData.type,          // "audio" | "video"
-        callStatus: callData.status,        // "completed" | "missed" | "cancelled"
-        duration:   callData.duration || 0,
-        senderId:   callData.callerId,
+      await addConversationCallLog(selectedConversationId, callData);
+      await addConversationMessage(selectedConversationId, {
+        type: "call",
+        callType: callData.type,
+        callStatus: callData.status,
+        duration: callData.duration || 0,
+        senderId: callData.callerId,
         receiverId: callData.receiverId,
-        createdAt:  serverTimestamp(),
-        readBy:     [authUser.uid],
+        readBy: [authUser.uid],
       });
     } catch (e) {
       console.error("saveCallLogAndMessage error:", e);
@@ -430,10 +404,9 @@ const ChatWindow = ({
   };
 
   const setCallState = async (nextCallState) => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
+    if (!authUser?.uid || !selectedConversationId) return;
     try {
-      const conversationRef = doc(db, "conversations", selectedConversationId);
-      await setDoc(conversationRef, { callState: nextCallState }, { merge: true });
+      await updateConversationMeta(selectedConversationId, { callState: nextCallState });
       if (onUpdateCallState) onUpdateCallState(nextCallState);
     } catch (e) {
       console.error("setCallState error:", e);
@@ -441,15 +414,12 @@ const ChatWindow = ({
   };
 
   const sendCallSignal = async (payload) => {
-    if (!db || !authUser?.uid || !selectedUser?.uid || !selectedConversationId) return;
+    if (!authUser?.uid || !selectedUser?.uid || !selectedConversationId) return;
     try {
-      const conversationRef = doc(db, "conversations", selectedConversationId);
-      const signalsRef      = collection(conversationRef, "signals");
-      await addDoc(signalsRef, {
+      await addConversationSignal(selectedConversationId, {
         ...payload,
-        from:      authUser.uid,
-        to:        selectedUser.uid,
-        createdAt: serverTimestamp(),
+        from: authUser.uid,
+        to: selectedUser.uid,
       });
       if (onSendCallSignal) onSendCallSignal(payload);
     } catch (e) {
@@ -512,7 +482,7 @@ const ChatWindow = ({
         to:        selectedUser.uid,
         type,
         status:    "ringing",
-        startedAt: serverTimestamp(),
+        startedAt: new Date().toISOString(),
       });
 
       setStatusText(`Calling ${selectedUser.displayName}…`);
@@ -571,7 +541,7 @@ const ChatWindow = ({
       direction:  currentCall?.from === authUser?.uid ? "outgoing" : "incoming",
       status:     callStatus,
       startedAt:  currentCall?.startedAt || null,
-      endedAt:    serverTimestamp(),
+      endedAt:    new Date().toISOString(),
       duration:   callDurationSec,
       callerId:   currentCall?.from || authUser?.uid,
       receiverId: currentCall?.to || selectedUser?.uid,
@@ -608,44 +578,18 @@ const ChatWindow = ({
     if (!file) throw new Error("File missing.");
     if (file.size > MAX_FILE_SIZE_BYTES) throw new Error("File too large. Max 15 MB.");
 
-    const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        uploadTask.cancel();
-        setUploadProgress(0);
-        reject(new Error("Upload timed out. Check Firebase Storage bucket/rules and try again."));
-      }, 45000);
-
-      uploadTask.on(
-        "state_changed",
-        (s) => setUploadProgress(Math.round((s.bytesTransferred / s.totalBytes) * 100)),
-        async (err) => {
-          clearTimeout(timeoutId);
-          try { await deleteObject(storageRef); } catch {}
-          setUploadProgress(0);
-          reject(err);
-        },
-        async () => {
-          clearTimeout(timeoutId);
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          setUploadProgress(0);
-          resolve(url);
-        }
-      );
-    });
+    setUploadProgress(20);
+    const folder = (path || "attachments").split("/")[0] || "attachments";
+    const { url } = await uploadMedia({ uid: authUser?.uid || "unknown", folder, file });
+    setUploadProgress(100);
+    setTimeout(() => setUploadProgress(0), 150);
+    return url;
   };
 
   const updateTypingState = async (isTyping) => {
-    if (!db || !authUser?.uid || !selectedUser?.uid || activeThreadType !== "direct") return;
-    if (!selectedConversationId) return;
+    if (!authUser?.uid || !selectedUser?.uid || activeThreadType !== "direct" || !selectedConversationId) return;
     try {
-      await setDoc(
-        doc(db, "conversations", selectedConversationId),
-        { typing: { [authUser.uid]: isTyping } },
-        { merge: true }
-      );
+      await updateConversationMeta(selectedConversationId, { typing: { [authUser.uid]: isTyping } });
     } catch {}
   };
 
@@ -657,39 +601,31 @@ const ChatWindow = ({
     return "file";
   };
 
-  // FIX: setDoc always uses { merge: true } to avoid nuking themes/mute settings.
+  // Backend domain endpoint handles persistence logic for direct/group/channel sends.
   const sendMessage = async ({ text = "", file = null, forwardedFrom = null } = {}) => {
-    if (!db || !authUser?.uid || !profile) {
+    if (!authUser?.uid || !profile) {
       setStatusText("Database connection error");
       return false;
     }
     if (!text.trim() && !file) return false;
 
-    // ── Group ──
     if (activeThreadType === "group" && selectedGroup) {
       try {
-        const groupRef = doc(db, "groups", selectedGroup.id);
-        const payload = {
-          text:       text.trim(),
-          type:       "text",
-          senderId:   authUser.uid,
-          senderName: profile.displayName,
-          createdAt:  serverTimestamp(),
-        };
-        if (replyTo) {
-          payload.replyTo = {
-            id: replyTo.id,
-            text: replyTo.text,
-            senderId: replyTo.senderId,
-            senderName: replyTo.senderName || usersById.get(replyTo.senderId)?.displayName || "Member",
-          };
-        }
-        await addDoc(collection(groupRef, "messages"), payload);
-        await setDoc(groupRef, {
-          lastMessage:   text.trim(),
-          lastMessageAt: serverTimestamp(),
-          updatedAt:     serverTimestamp(),
-        }, { merge: true });
+        await sendChatMessage({
+          threadType: "group",
+          threadId: selectedGroup.id,
+          actorUid: authUser.uid,
+          actorName: profile.displayName,
+          payload: { text: text.trim(), type: "text" },
+          replyTo: replyTo
+            ? {
+                id: replyTo.id,
+                text: replyTo.text,
+                senderId: replyTo.senderId,
+                senderName: replyTo.senderName || usersById.get(replyTo.senderId)?.displayName || "Member",
+              }
+            : null,
+        });
         setMessageInput("");
         setReplyTo(null);
         setReplyTargetUser(null);
@@ -700,26 +636,19 @@ const ChatWindow = ({
       return true;
     }
 
-    // ── Channel ──
     if (activeThreadType === "channel" && selectedChannel) {
       if (selectedChannel.ownerId !== authUser.uid) {
         setStatusText("Only channel owner can publish posts.");
         return false;
       }
       try {
-        const channelRef = doc(db, "channels", selectedChannel.id);
-        await addDoc(collection(channelRef, "posts"), {
-          text:       text.trim(),
-          type:       "post",
-          senderId:   authUser.uid,
-          senderName: profile.displayName,
-          createdAt:  serverTimestamp(),
+        await sendChatMessage({
+          threadType: "channel",
+          threadId: selectedChannel.id,
+          actorUid: authUser.uid,
+          actorName: profile.displayName,
+          payload: { text: text.trim(), type: "post" },
         });
-        await setDoc(channelRef, {
-          lastPost:   text.trim(),
-          lastPostAt: serverTimestamp(),
-          updatedAt:  serverTimestamp(),
-        }, { merge: true });
         setMessageInput("");
         setReplyTo(null);
         setReplyTargetUser(null);
@@ -732,7 +661,6 @@ const ChatWindow = ({
       return true;
     }
 
-    // ── Direct ──
     if (activeThreadType === "direct") {
       if (!selectedUser?.uid || !selectedConversationId) {
         setStatusText("No conversation selected.");
@@ -740,17 +668,13 @@ const ChatWindow = ({
       }
 
       let payload = { type: "text", text: text.trim() };
-
       if (file) {
         setSendingAttachment(true);
         try {
-          const fileURL = await uploadToStorage(
-            `attachments/${selectedConversationId}`,
-            file
-          );
+          const fileURL = await uploadToStorage(`attachments/${selectedConversationId}`, file);
           payload = {
-            type:     inferMessageTypeFromFile(file),
-            text:     text.trim() || file.name,
+            type: inferMessageTypeFromFile(file),
+            text: text.trim() || file.name,
             fileURL,
             fileName: file.name,
             fileSize: file.size,
@@ -766,38 +690,23 @@ const ChatWindow = ({
       }
 
       if (forwardedFrom) payload.forwardedFrom = forwardedFrom;
-      if (replyTo) {
-        payload.replyTo = { id: replyTo.id, text: replyTo.text, senderId: replyTo.senderId };
-        setReplyTo(null);
-        setReplyTargetUser(null);
-      }
+      const replyPayload = replyTo ? { id: replyTo.id, text: replyTo.text, senderId: replyTo.senderId } : null;
 
       try {
-        const conversationRef = doc(db, "conversations", selectedConversationId);
-        // FIX: merge:true — never overwrite themes, mute settings, etc.
-        await setDoc(conversationRef, {
-          participants:        [authUser.uid, selectedUser.uid],
-          participantPhones:   [profile.phoneNumber || "", selectedUser.phoneNumber || ""],
-          lastMessage:         payload.type === "text" ? payload.text : `${payload.type === "audio" ? "🎤" : payload.type === "video" ? "🎬" : "📎"} ${payload.fileName}`,
-          lastMessageType:     payload.type,
-          lastMessageSender:   authUser.uid,
-          lastMessageStatus:   selectedUser?.isOnline ? "delivered" : "sent",
-          lastMessageAt:       serverTimestamp(),
-          typing:              { [authUser.uid]: false },
-          unreadBy:            { [authUser.uid]: 0, [selectedUser.uid]: increment(1) },
-          createdAt:           serverTimestamp(),
-          updatedAt:           serverTimestamp(),
-        }, { merge: true });
-
-        await addDoc(collection(conversationRef, "messages"), {
-          ...payload,
-          senderId:   authUser.uid,
-          receiverId: selectedUser.uid,
-          createdAt:  serverTimestamp(),
-          deliveredTo: [authUser.uid, ...(selectedUser?.isOnline ? [selectedUser.uid] : [])],
-          readBy:     [authUser.uid],
+        await sendChatMessage({
+          threadType: "direct",
+          threadId: selectedConversationId,
+          actorUid: authUser.uid,
+          actorName: profile.displayName,
+          actorPhone: profile.phoneNumber || "",
+          targetUid: selectedUser.uid,
+          targetPhone: selectedUser.phoneNumber || "",
+          isTargetOnline: Boolean(selectedUser?.isOnline),
+          payload,
+          replyTo: replyPayload,
         });
-
+        setReplyTo(null);
+        setReplyTargetUser(null);
         setMessageInput("");
         updateTypingState(false);
         setEditingMessageId(null);
@@ -816,28 +725,16 @@ const ChatWindow = ({
   const sendDirectMessageToUser = async ({ targetUser, payload }) => {
     if (!authUser || !profile || !targetUser || !payload) return;
     const conversationId = conversationIdFor(authUser.uid, targetUser.uid);
-    const conversationRef = doc(db, "conversations", conversationId);
-    await setDoc(
-      conversationRef,
-      {
-        participants: [authUser.uid, targetUser.uid],
-        participantPhones: [profile.phoneNumber || "", targetUser.phoneNumber || ""],
-        lastMessage: payload.type === "text" ? payload.text : `${payload.type === "audio" ? "🎤" : payload.type === "video" ? "🎬" : "📎"} ${payload.fileName || "attachment"}`,
-        lastMessageType: payload.type,
-        lastMessageSender: authUser.uid,
-        lastMessageStatus: targetUser?.isOnline ? "delivered" : "sent",
-        lastMessageAt: serverTimestamp(),
-        unreadBy: { [authUser.uid]: 0, [targetUser.uid]: increment(1) },
-      },
-      { merge: true }
-    );
-    await addDoc(collection(db, "conversations", conversationId, "messages"), {
-      ...payload,
-      senderId: authUser.uid,
-      receiverId: targetUser.uid,
-      createdAt: serverTimestamp(),
-      deliveredTo: [authUser.uid, ...(targetUser?.isOnline ? [targetUser.uid] : [])],
-      readBy: [authUser.uid],
+    await sendChatMessage({
+      threadType: "direct",
+      threadId: conversationId,
+      actorUid: authUser.uid,
+      actorName: profile.displayName,
+      actorPhone: profile.phoneNumber || "",
+      targetUid: targetUser.uid,
+      targetPhone: targetUser.phoneNumber || "",
+      isTargetOnline: Boolean(targetUser?.isOnline),
+      payload,
     });
   };
 
@@ -866,16 +763,10 @@ const ChatWindow = ({
     const newText = messageInput.trim();
     if (!newText) return;
     if (activeThreadType === "direct" && selectedConversationId) {
-      await updateDoc(doc(db, "conversations", selectedConversationId, "messages", msg.id), {
-        text: newText,
-        editedAt: serverTimestamp(),
-      });
+      await editChatMessage({ threadType: "direct", threadId: selectedConversationId, messageId: msg.id, text: newText });
     }
     if (activeThreadType === "group" && selectedGroup) {
-      await updateDoc(doc(db, "groups", selectedGroup.id, "messages", msg.id), {
-        text: newText,
-        editedAt: serverTimestamp(),
-      });
+      await editChatMessage({ threadType: "group", threadId: selectedGroup.id, messageId: msg.id, text: newText });
     }
     setMessageInput("");
     setEditingMessageId(null);
@@ -885,44 +776,45 @@ const ChatWindow = ({
   const deleteForMe = async (msg) => {
     if (!authUser) return;
     if (activeThreadType === "direct" && selectedConversationId) {
-      await updateDoc(doc(db, "conversations", selectedConversationId, "messages", msg.id), {
-        deletedFor: arrayUnion(authUser.uid),
-      });
+      await deleteChatMessageForMe({ threadType: "direct", threadId: selectedConversationId, messageId: msg.id, actorUid: authUser.uid });
     }
     if (activeThreadType === "group" && selectedGroup) {
-      await updateDoc(doc(db, "groups", selectedGroup.id, "messages", msg.id), {
-        deletedFor: arrayUnion(authUser.uid),
-      });
+      await deleteChatMessageForMe({ threadType: "group", threadId: selectedGroup.id, messageId: msg.id, actorUid: authUser.uid });
     }
   };
 
   const deleteForEveryone = async (msg) => {
     if (!authUser || msg.senderId !== authUser.uid) return;
-    const deletionPayload = {
-      text: "🚫 This message was deleted.",
-      deletedForEveryone: true,
-      deletedAt: serverTimestamp(),
-      fileURL: null,
-      fileName: null,
-      fileSize: null,
-    };
     if (activeThreadType === "direct" && selectedConversationId) {
-      await updateDoc(doc(db, "conversations", selectedConversationId, "messages", msg.id), deletionPayload);
+      await deleteChatMessageForEveryone({ threadType: "direct", threadId: selectedConversationId, messageId: msg.id });
     }
     if (activeThreadType === "group" && selectedGroup) {
-      await updateDoc(doc(db, "groups", selectedGroup.id, "messages", msg.id), deletionPayload);
+      await deleteChatMessageForEveryone({ threadType: "group", threadId: selectedGroup.id, messageId: msg.id });
     }
   };
 
   const toggleMessageFlag = async (msg, key) => {
     if (!authUser) return;
     const alreadyFlagged = (msg[key] || []).includes(authUser.uid);
-    const payload = { [key]: alreadyFlagged ? arrayRemove(authUser.uid) : arrayUnion(authUser.uid) };
     if (activeThreadType === "direct" && selectedConversationId) {
-      await updateDoc(doc(db, "conversations", selectedConversationId, "messages", msg.id), payload);
+      await toggleChatMessageFlag({
+        threadType: "direct",
+        threadId: selectedConversationId,
+        messageId: msg.id,
+        actorUid: authUser.uid,
+        key,
+        alreadyFlagged,
+      });
     }
     if (activeThreadType === "group" && selectedGroup) {
-      await updateDoc(doc(db, "groups", selectedGroup.id, "messages", msg.id), payload);
+      await toggleChatMessageFlag({
+        threadType: "group",
+        threadId: selectedGroup.id,
+        messageId: msg.id,
+        actorUid: authUser.uid,
+        key,
+        alreadyFlagged,
+      });
     }
   };
 
@@ -955,36 +847,24 @@ const ChatWindow = ({
   };
 
   const setMute = async () => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
-    await setDoc(
-      doc(db, "conversations", selectedConversationId),
-      { mutedBy: { [authUser.uid]: !selectedMuted } },
-      { merge: true }
-    ).catch(console.error);
+    if (!authUser?.uid || !selectedConversationId) return;
+    await updateConversationMeta(selectedConversationId, {
+      mutedBy: { [authUser.uid]: !selectedMuted },
+    }).catch(console.error);
   };
 
   const setTheme = async (theme) => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
-    await setDoc(
-      doc(db, "conversations", selectedConversationId),
-      { themeBy: { [authUser.uid]: theme } },
-      { merge: true }
-    ).catch(console.error);
+    if (!authUser?.uid || !selectedConversationId) return;
+    await updateConversationMeta(selectedConversationId, {
+      themeBy: { [authUser.uid]: theme },
+    }).catch(console.error);
   };
 
   const deleteChatHistory = async () => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
+    if (!authUser?.uid || !selectedConversationId) return;
     if (!window.confirm("Clear this conversation's history?")) return;
     try {
-      const conversationRef = doc(db, "conversations", selectedConversationId);
-      const snapshot        = await getDocs(collection(conversationRef, "messages"));
-      const batch           = writeBatch(db);
-      snapshot.docs.forEach((e) => batch.update(e.ref, { deletedFor: arrayUnion(authUser.uid) }));
-      if (!snapshot.empty) await batch.commit();
-      await setDoc(conversationRef, {
-        clearedAtBy: { [authUser.uid]: serverTimestamp() },
-        unreadBy:    { [authUser.uid]: 0 },
-      }, { merge: true });
+      await clearConversationForUser(selectedConversationId, authUser.uid);
       setMessages([]);
       setStatusText("Conversation history cleared.");
       setTimeout(() => setStatusText(""), 3000);
@@ -1006,7 +886,6 @@ const ChatWindow = ({
   // ── Guards ────────────────────────────────────────────────────────────────
   // ═════════════════════════════════════════════════════════════════════════
 
-  if (!db)           return null;
   if (!activeThread) return null;
 
   // ═════════════════════════════════════════════════════════════════════════

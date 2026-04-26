@@ -3,11 +3,11 @@
   "private": true,
   "workspaces": [
     "backend",
-    "pqc-chat-ui"
+    "frontend"
   ],
   "scripts": {
     "start:backend": "npm --prefix backend start",
-    "start:frontend": "npm --prefix pqc-chat-ui start",
-    "dev": "bash -lc 'npm --prefix backend run dev & npm --prefix pqc-chat-ui start'"
+    "start:frontend": "npm --prefix frontend start",
+    "dev": "bash -lc 'npm --prefix backend run dev & npm --prefix frontend start'"
   }
 }
