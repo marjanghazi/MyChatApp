@@ -29,3 +29,23 @@ export const toggleChatMessageFlag = (body) =>
     method: "PATCH",
     body: JSON.stringify(body),
   });
+
+export const fetchThreadMessages = (threadType, threadId, uid) =>
+  apiRequest(`/api/chat/messages?threadType=${encodeURIComponent(threadType)}&threadId=${encodeURIComponent(threadId)}&uid=${encodeURIComponent(uid || "")}`);
+
+export const fetchCallLogs = (conversationId) =>
+  apiRequest(`/api/chat/call-logs?conversationId=${encodeURIComponent(conversationId)}`);
+
+export const fetchSignals = (conversationId, to) =>
+  apiRequest(`/api/chat/signals?conversationId=${encodeURIComponent(conversationId)}&to=${encodeURIComponent(to)}`);
+
+export const deleteSignal = (conversationId, signalId) =>
+  apiRequest(`/api/chat/signals/${encodeURIComponent(signalId)}?conversationId=${encodeURIComponent(conversationId)}`, {
+    method: "DELETE",
+  });
+
+export const markConversationSeen = (conversationId, uid) =>
+  apiRequest("/api/chat/conversations/seen", {
+    method: "PATCH",
+    body: JSON.stringify({ conversationId, uid }),
+  });

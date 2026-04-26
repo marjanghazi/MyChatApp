@@ -209,3 +209,110 @@ export const toggleMessageFlag = async (req, res, next) => {
     next(error);
   }
 };
+
+
+const toDocs = (snapshot) => snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+export const listThreadMessages = async (req, res, next) => {
+  try {
+    const { threadType, threadId, uid } = req.query;
+    must(threadType, "threadType");
+    must(threadId, "threadId");
+
+    let snapshot;
+    if (threadType === "direct") {
+      snapshot = await db.collection("conversations").doc(threadId).collection("messages").orderBy("createdAt", "asc").get();
+    } else if (threadType === "group") {
+      snapshot = await db.collection("groups").doc(threadId).collection("messages").orderBy("createdAt", "asc").get();
+    } else if (threadType === "channel") {
+      snapshot = await db.collection("channels").doc(threadId).collection("posts").orderBy("createdAt", "asc").get();
+    } else {
+      const error = new Error("Unsupported threadType");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    let messages = toDocs(snapshot);
+    if (uid) {
+      messages = messages.filter((m) => !(m.deletedFor || []).includes(uid));
+    }
+    res.json({ messages });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listCallLogs = async (req, res, next) => {
+  try {
+    const { conversationId } = req.query;
+    must(conversationId, "conversationId");
+    const snapshot = await db.collection("conversations").doc(conversationId).collection("callLogs").orderBy("createdAt", "desc").get();
+    res.json({ logs: toDocs(snapshot) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listSignals = async (req, res, next) => {
+  try {
+    const { conversationId, to } = req.query;
+    must(conversationId, "conversationId");
+    must(to, "to");
+    const snapshot = await db
+      .collection("conversations")
+      .doc(conversationId)
+      .collection("signals")
+      .where("to", "==", to)
+      .orderBy("createdAt", "asc")
+      .get();
+    res.json({ signals: toDocs(snapshot) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteSignal = async (req, res, next) => {
+  try {
+    const { signalId } = req.params;
+    const { conversationId } = req.query;
+    must(signalId, "signalId");
+    must(conversationId, "conversationId");
+    await db.collection("conversations").doc(conversationId).collection("signals").doc(signalId).delete();
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const markConversationSeen = async (req, res, next) => {
+  try {
+    const { conversationId, uid } = req.body;
+    must(conversationId, "conversationId");
+    must(uid, "uid");
+
+    const messagesRef = db.collection("conversations").doc(conversationId).collection("messages");
+    const unread = await messagesRef.where("receiverId", "==", uid).get();
+    const batch = db.batch();
+    unread.docs.forEach((entry) => {
+      const d = entry.data();
+      if ((d.readBy || []).includes(uid)) return;
+      batch.update(entry.ref, {
+        deliveredTo: FieldValue.arrayUnion(uid),
+        readBy: FieldValue.arrayUnion(uid),
+        readAt: FieldValue.serverTimestamp(),
+      });
+    });
+    batch.set(
+      db.collection("conversations").doc(conversationId),
+      {
+        unreadBy: { [uid]: 0 },
+        lastMessageStatus: "seen",
+      },
+      { merge: true }
+    );
+    await batch.commit();
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};

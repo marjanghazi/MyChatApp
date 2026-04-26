@@ -16,16 +16,12 @@ import {
   getDocs,
   getDownloadURL,
   increment,
-  onSnapshot,
-  orderBy,
-  query,
   ref,
   serverTimestamp,
   setDoc,
   storage,
   updateDoc,
   uploadBytesResumable,
-  where,
   writeBatch,
 } from "../../services/firebaseCompat";
 import { ICE_SERVERS, MAX_FILE_SIZE_BYTES, THEMES } from "./chatConstants";
@@ -50,6 +46,11 @@ import {
   editChatMessage,
   sendChatMessage,
   toggleChatMessageFlag,
+  fetchThreadMessages,
+  fetchCallLogs,
+  fetchSignals,
+  deleteSignal as deleteSignalApi,
+  markConversationSeen,
 } from "../../services/chatService";
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -191,152 +192,148 @@ const ChatWindow = ({
     return () => clearInterval(callDurationIntervalRef.current);
   }, [selectedCall?.status, selectedCall?.startedAt]);
 
-  // ── Messages subscription — direct ───────────────────────────────────────
+  // ── Messages polling — direct ───────────────────────────────────────────
   useEffect(() => {
-    if (!db || !authUser?.uid || !selectedUser?.uid || activeThreadType !== "direct") return;
-    if (!selectedConversationId) return;
+    if (!authUser?.uid || !selectedUser?.uid || activeThreadType !== "direct" || !selectedConversationId) return undefined;
 
-    const conversationRef = doc(db, "conversations", selectedConversationId);
-    setDoc(conversationRef, {
-      participants:      [authUser.uid, selectedUser.uid],
-      participantPhones: [profile?.phoneNumber || "", selectedUser.phoneNumber || ""],
-      unreadBy:          { [authUser.uid]: 0 },
-      createdAt:         serverTimestamp(),
-      updatedAt:         serverTimestamp(),
-    }, { merge: true }).catch(console.error);
-
-    const q = query(collection(conversationRef, "messages"), orderBy("createdAt", "asc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const next = snapshot.docs
-        .map((e) => ({ id: e.id, ...e.data() }))
-        .filter((e) => !(e.deletedFor || []).includes(authUser.uid));
-      setMessages(next);
-
-      const unread = snapshot.docs.filter((e) => {
-        const d = e.data();
-        return d.receiverId === authUser.uid && !(d.readBy || []).includes(authUser.uid);
-      });
-      unread.forEach((e) =>
-        updateDoc(e.ref, {
-          deliveredTo: arrayUnion(authUser.uid),
-          readBy: arrayUnion(authUser.uid),
-          readAt: serverTimestamp(),
-        })
-      );
-      if (unread.length) {
-        setDoc(conversationRef, {
-          unreadBy: { [authUser.uid]: 0 },
-          lastMessageStatus: "seen",
-        }, { merge: true });
+    let alive = true;
+    const run = async () => {
+      try {
+        const { messages: next = [] } = await fetchThreadMessages("direct", selectedConversationId, authUser.uid);
+        if (!alive) return;
+        setMessages(next);
+        if (next.some((m) => m.receiverId === authUser.uid && !(m.readBy || []).includes(authUser.uid))) {
+          await markConversationSeen(selectedConversationId, authUser.uid);
+        }
+      } catch (error) {
+        console.error("direct polling error", error);
       }
-    });
-    return unsubscribe;
-  }, [authUser?.uid, selectedUser?.uid, activeThreadType, selectedConversationId, profile]);
+    };
 
-  // ── Messages subscription — group ────────────────────────────────────────
+    run();
+    const timer = setInterval(run, 1200);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [authUser?.uid, selectedUser?.uid, activeThreadType, selectedConversationId]);
+
+  // ── Messages polling — group ────────────────────────────────────────────
   useEffect(() => {
-    if (!db || !authUser?.uid || !selectedGroup || activeThreadType !== "group") return;
-    const q = query(collection(doc(db, "groups", selectedGroup.id), "messages"), orderBy("createdAt", "asc"));
-    return onSnapshot(q, (snapshot) =>
-      setMessages(snapshot.docs.map((e) => ({ id: e.id, ...e.data() })))
-    );
+    if (!authUser?.uid || !selectedGroup || activeThreadType !== "group") return undefined;
+    let alive = true;
+    const run = async () => {
+      try {
+        const { messages: next = [] } = await fetchThreadMessages("group", selectedGroup.id, authUser.uid);
+        if (alive) setMessages(next);
+      } catch (error) {
+        console.error("group polling error", error);
+      }
+    };
+    run();
+    const timer = setInterval(run, 1500);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, [authUser?.uid, selectedGroup, activeThreadType]);
 
-  // ── Messages subscription — channel ──────────────────────────────────────
+  // ── Messages polling — channel ──────────────────────────────────────────
   useEffect(() => {
-    if (!db || !authUser?.uid || !selectedChannel || activeThreadType !== "channel") return;
-    const q = query(collection(doc(db, "channels", selectedChannel.id), "posts"), orderBy("createdAt", "asc"));
-    return onSnapshot(q, (snapshot) =>
-      setMessages(snapshot.docs.map((e) => ({ id: e.id, ...e.data() })))
-    );
+    if (!authUser?.uid || !selectedChannel || activeThreadType !== "channel") return undefined;
+    let alive = true;
+    const run = async () => {
+      try {
+        const { messages: next = [] } = await fetchThreadMessages("channel", selectedChannel.id, authUser.uid);
+        if (alive) setMessages(next);
+      } catch (error) {
+        console.error("channel polling error", error);
+      }
+    };
+    run();
+    const timer = setInterval(run, 1500);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, [authUser?.uid, selectedChannel, activeThreadType]);
 
-  // ── Call logs subscription ────────────────────────────────────────────────
+  // ── Call logs polling ───────────────────────────────────────────────────
   useEffect(() => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
-    const logsRef = collection(doc(db, "conversations", selectedConversationId), "callLogs");
-    const q = query(logsRef, orderBy("createdAt", "desc"));
-    return onSnapshot(q, (snapshot) =>
-      setCallLogs(snapshot.docs.map((e) => ({ id: e.id, ...e.data() })))
-    );
-  }, [authUser?.uid, selectedConversationId]);
-
-  // ── Call signals subscription ─────────────────────────────────────────────
-  // FIX: ICE candidates buffered until remote description is applied.
-  useEffect(() => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
-
-    const conversationRef = doc(db, "conversations", selectedConversationId);
-    const signalsRef      = collection(conversationRef, "signals");
-    const q               = query(signalsRef, where("to", "==", authUser.uid));
-
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      for (const change of snapshot.docChanges()) {
-        if (change.type !== "added") continue;
-        const signal = change.doc.data();
-
-        try {
-          if (signal.type === "offer") {
-            // Caller's offer — just store it; don't touch the peer connection yet.
-            setIncomingOffer(signal.sdp);
-
-          } else if (signal.type === "answer" && peerConnectionRef.current) {
-            // FIX: use applyRemoteDescription to flush buffered ICE after this.
-            await applyRemoteDescription(peerConnectionRef.current, signal.sdp);
-            const currentCall = selectedCallRef.current;
-            if (currentCall && onUpdateCallState) onUpdateCallState({ ...currentCall, status: "active" });
-
-          } else if (signal.type === "ice") {
-            // FIX: buffer if peer connection doesn't exist OR remote desc not yet set.
-            if (peerConnectionRef.current && hasRemoteDescRef.current) {
-              try {
-                await peerConnectionRef.current.addIceCandidate(
-                  new RTCIceCandidate(signal.candidate)
-                );
-              } catch (e) {
-                console.warn("ICE candidate error:", e);
-              }
-            } else {
-              pendingIceCandidatesRef.current.push(signal.candidate);
-            }
-
-          } else if (signal.type === "hangup") {
-            const currentCall = selectedCallRef.current;
-            // Receiver side: save call log so both parties have a record.
-            if (currentCall) {
-              const status =
-                currentCall.status === "ringing"
-                  ? currentCall.from === authUser.uid ? "cancelled" : "missed"
-                  : "completed";
-              await saveCallLogOnly({
-                type:      currentCall.type,
-                direction: currentCall.to === authUser.uid ? "incoming" : "outgoing",
-                status,
-                startedAt: currentCall.startedAt,
-                endedAt:   serverTimestamp(),
-                duration:  callDurationSec,
-                callerId:  currentCall.from,
-                receiverId: currentCall.to,
-              });
-            }
-            stopCallMedia();
-            if (currentCall && onUpdateCallState)
-              onUpdateCallState({ ...currentCall, status: "ended" });
-            setStatusText("Call ended");
-            setTimeout(() => setStatusText(""), 3000);
-          }
-        } finally {
-          // Always delete the processed signal
-          await deleteDoc(change.doc.ref).catch(() => {});
-        }
+    if (!authUser?.uid || !selectedConversationId) return undefined;
+    let alive = true;
+    const run = async () => {
+      try {
+        const { logs = [] } = await fetchCallLogs(selectedConversationId);
+        if (alive) setCallLogs(logs);
+      } catch (error) {
+        console.error("call log polling error", error);
       }
-    });
-
-    return unsubscribe;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    };
+    run();
+    const timer = setInterval(run, 2000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, [authUser?.uid, selectedConversationId]);
 
-  // ═════════════════════════════════════════════════════════════════════════
+  // ── Call signals polling ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!authUser?.uid || !selectedConversationId) return undefined;
+
+    let alive = true;
+    const run = async () => {
+      try {
+        const { signals = [] } = await fetchSignals(selectedConversationId, authUser.uid);
+        for (const signal of signals) {
+          if (!alive) return;
+          try {
+            if (signal.type === "offer") {
+              setIncomingOffer(signal.sdp);
+            } else if (signal.type === "answer" && peerConnectionRef.current) {
+              await applyRemoteDescription(peerConnectionRef.current, signal.sdp);
+              const currentCall = selectedCallRef.current;
+              if (currentCall?.status !== "active") {
+                await updateCallState({
+                  ...currentCall,
+                  status: "active",
+                  startedAt: currentCall?.startedAt || new Date().toISOString(),
+                });
+              }
+            } else if (signal.type === "candidate" && peerConnectionRef.current) {
+              const candidate = new RTCIceCandidate(signal.candidate);
+              if (!hasRemoteDescRef.current) {
+                pendingIceCandidatesRef.current.push(candidate);
+              } else {
+                await peerConnectionRef.current.addIceCandidate(candidate).catch(() => {});
+              }
+            } else if (signal.type === "hangup") {
+              await updateCallState({
+                status: "ended",
+                endedAt: new Date().toISOString(),
+                endedBy: signal.from,
+                reason: signal.reason || "hangup",
+              });
+              stopCallMedia();
+            }
+          } finally {
+            await deleteSignalApi(selectedConversationId, signal.id).catch(() => {});
+          }
+        }
+      } catch (error) {
+        console.error("signal polling error", error);
+      }
+    };
+
+    run();
+    const timer = setInterval(run, 900);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [authUser?.uid, selectedConversationId]);
+
   // ── Call helpers ──────────────────────────────────────────────────────────
   // ═════════════════════════════════════════════════════════════════════════
 
