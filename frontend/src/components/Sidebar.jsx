@@ -4,9 +4,30 @@ import "./Sidebar.css";
 
 const FILTERS = ["All", "Unread", "Groups", "Channels"];
 
+const toDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value?.toDate === "function") {
+    const d = value.toDate();
+    return Number.isNaN(d?.getTime?.()) ? null : d;
+  }
+
+  if (typeof value === "object") {
+    const seconds = typeof value.seconds === "number" ? value.seconds : value._seconds;
+    const nanos = typeof value.nanoseconds === "number" ? value.nanoseconds : value._nanoseconds || 0;
+    if (typeof seconds === "number") {
+      const d = new Date(seconds * 1000 + Math.floor(nanos / 1_000_000));
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+  }
+
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 const formatTime = (dateValue) => {
-  if (!dateValue) return "";
-  const date = typeof dateValue?.toDate === "function" ? dateValue.toDate() : new Date(dateValue);
+  const date = toDate(dateValue);
+  if (!date) return "";
   const now = new Date();
   const diff = now - date;
   if (diff < 86400000) return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -165,8 +186,8 @@ const Sidebar = ({
 
     // Sort by recency
     items.sort((a, b) => {
-      const aTime = a.time?.toDate?.() || (a.time ? new Date(a.time) : new Date(0));
-      const bTime = b.time?.toDate?.() || (b.time ? new Date(b.time) : new Date(0));
+      const aTime = toDate(a.time) || new Date(0);
+      const bTime = toDate(b.time) || new Date(0);
       return bTime - aTime;
     });
 
