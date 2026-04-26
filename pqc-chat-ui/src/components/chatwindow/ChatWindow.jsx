@@ -281,7 +281,7 @@ const ChatWindow = ({
               await applyRemoteDescription(peerConnectionRef.current, signal.sdp);
               const currentCall = selectedCallRef.current;
               if (currentCall?.status !== "active") {
-                await updateCallState({
+                await setCallState({
                   ...currentCall,
                   status: "active",
                   startedAt: currentCall?.startedAt || new Date().toISOString(),
@@ -295,7 +295,7 @@ const ChatWindow = ({
                 await peerConnectionRef.current.addIceCandidate(candidate).catch(() => {});
               }
             } else if (signal.type === "hangup") {
-              await updateCallState({
+              await setCallState({
                 status: "ended",
                 endedAt: new Date().toISOString(),
                 endedBy: signal.from,
