@@ -55,3 +55,11 @@ REACT_APP_API_BASE_URL=http://localhost:4000
 
 ## Next steps
 Follow `BACKEND_FIRST_MIGRATION.md` and `FRONTEND_BACKEND_LOGIC_AUDIT.md` to migrate all remaining frontend direct Firebase usage into backend APIs.
+
+## Troubleshooting
+If backend start prints missing dependencies (for example `Cannot find package 'dotenv'` or `express`):
+```bash
+cd backend
+npm install
+npm start
+```
