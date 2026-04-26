@@ -6,29 +6,28 @@ import "./chatwindow.composer.css";
 import "./chatwindow.overlays.css";
 import {
   addDoc,
-  arrayUnion,
   arrayRemove,
+  arrayUnion,
   collection,
+  db,
   deleteDoc,
+  deleteObject,
   doc,
   getDocs,
+  getDownloadURL,
   increment,
   onSnapshot,
   orderBy,
   query,
+  ref,
   serverTimestamp,
   setDoc,
+  storage,
   updateDoc,
+  uploadBytesResumable,
   where,
   writeBatch,
-} from "firebase/firestore";
-import {
-  deleteObject,
-  getDownloadURL,
-  ref,
-  uploadBytesResumable,
-} from "firebase/storage";
-import { db, storage } from "../../firebase";
+} from "../../services/firebaseCompat";
 import { ICE_SERVERS, MAX_FILE_SIZE_BYTES, THEMES } from "./chatConstants";
 import {
   conversationIdFor,

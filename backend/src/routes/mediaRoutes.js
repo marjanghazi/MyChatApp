@@ -1,8 +1,10 @@
 import { Router } from "express";
-import { uploadMedia } from "../controllers/mediaController.js";
+import { deleteMediaByPath, uploadMedia, uploadMediaByPath } from "../controllers/mediaController.js";
 
 const router = Router();
 
 router.post("/upload", uploadMedia);
+router.post("/upload-by-path", uploadMediaByPath);
+router.post("/delete-by-path", deleteMediaByPath);
 
 export default router;
