@@ -34,6 +34,7 @@ import {
   followChannel,
   unfollowChannel,
 } from "./services/communityService";
+import { addContactByPhoneApi, checkPhoneAvailability } from "./services/userService";
 import {
   deleteObject,
   getDownloadURL,
@@ -50,14 +51,6 @@ import ChatWindow     from "./components/chatwindow/ChatWindow";
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
 
 const normalizePhone = (raw) => raw.replace(/\D/g, "");
-const buildPhoneVariants = (raw) => {
-  const digits   = normalizePhone(raw);
-  const variants = new Set([digits]);
-  if (digits.startsWith("0")  && digits.length > 1) variants.add(`92${digits.slice(1)}`);
-  if (digits.startsWith("92") && digits.length > 2) variants.add(`0${digits.slice(2)}`);
-  return [...variants].filter(Boolean);
-};
-
 const conversationIdFor = (uidA, uidB) => [uidA, uidB].sort().join("_");
 
 const AUTH_ERROR_MESSAGES = {
@@ -278,16 +271,8 @@ function App() {
     setAuthError("");
     try {
       if (authMode === "register") {
-        const phoneVariants   = buildPhoneVariants(authForm.phoneNumber);
-        const normalizedPhone = phoneVariants[0];
-        if (!normalizedPhone) throw new Error("A valid phone number is required.");
-
-        const [exactSnap, variantSnap] = await Promise.all([
-          getDocs(query(collection(db, "users"), where("phoneNumber", "in", phoneVariants))),
-          getDocs(query(collection(db, "users"), where("phoneLookupKeys", "array-contains-any", phoneVariants))),
-        ]);
-        if (!exactSnap.empty || !variantSnap.empty)
-          throw new Error("This phone number is already linked to another account.");
+        const { available, normalizedPhone, phoneVariants } = await checkPhoneAvailability(authForm.phoneNumber);
+        if (!available) throw new Error("This phone number is already linked to another account.");
 
         const creds = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
         await updateProfile(creds.user, { displayName: authForm.displayName.trim() });
@@ -317,24 +302,13 @@ function App() {
   const addContactByPhone = async (event) => {
     event.preventDefault();
     if (!authUser || !contactPhone.trim()) return;
-    const phoneVariants = buildPhoneVariants(contactPhone);
-    if (!phoneVariants.length) { setContactFeedback("Please enter a valid phone number."); return; }
-
-    const [directMatch, variantMatch] = await Promise.all([
-      getDocs(query(collection(db, "users"), where("phoneNumber", "in", phoneVariants))),
-      getDocs(query(collection(db, "users"), where("phoneLookupKeys", "array-contains-any", phoneVariants))),
-    ]);
-
-    const candidates = new Map();
-    directMatch.docs.forEach((e) => candidates.set(e.id, e.data()));
-    variantMatch.docs.forEach((e) => candidates.set(e.id, e.data()));
-    const candidate = [...candidates.values()][0];
-
-    if (!candidate)                  { setContactFeedback("No registered user found with that number."); return; }
-    if (candidate.uid === authUser.uid) { setContactFeedback("You cannot add your own number."); return; }
-
-    await updateDoc(doc(db, "users", authUser.uid), { contacts: arrayUnion(candidate.phoneNumber) });
-    setContactFeedback(`✓ Secured link to ${candidate.displayName}`);
+    try {
+      const { candidate } = await addContactByPhoneApi({ uid: authUser.uid, phoneNumber: contactPhone });
+      setContactFeedback(`✓ Secured link to ${candidate.displayName}`);
+    } catch (error) {
+      setContactFeedback(error?.message || "Unable to add contact right now.");
+      return;
+    }
     setContactPhone("");
     setTimeout(() => setContactFeedback(""), 3000);
   };
