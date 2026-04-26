@@ -112,7 +112,7 @@ npm install
 npm start
 ```
 3. By default the frontend now uses CRA dev proxy (`/api` -> `http://localhost:4000`).
-4. Only set `REACT_APP_API_BASE_URL` when you need a non-default backend URL.
+4. Only set `REACT_APP_API_BASE_URL` when you need a non-default backend URL. If unset, frontend first tries `/api/*` and then retries `http://localhost:4000` once for local fallback.
 5. If you set `REACT_APP_API_BASE_URL`, use backend root (`http://localhost:4000`) **or** backend `/api` (`http://localhost:4000/api`). Do not append extra path segments.
 6. Ensure backend `.env` contains frontend origin if you use explicit cross-origin URL:
 ```env

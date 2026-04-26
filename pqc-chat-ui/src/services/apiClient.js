@@ -1,4 +1,5 @@
 const DEFAULT_TIMEOUT_MS = 15_000;
+const LOCAL_BACKEND_ORIGIN = "http://localhost:4000";
 
 const sanitizeBaseUrl = (value) => {
   if (!value || typeof value !== "string") return "";
@@ -7,19 +8,24 @@ const sanitizeBaseUrl = (value) => {
 
 const API_BASE_URL = sanitizeBaseUrl(process.env.REACT_APP_API_BASE_URL);
 
-const buildUrl = (path) => {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+const normalizePath = (path) => (path.startsWith("/") ? path : `/${path}`);
 
-  if (!API_BASE_URL) return normalizedPath;
+const joinUrl = (baseUrl, path) => {
+  const normalizedPath = normalizePath(path);
+
+  if (!baseUrl) return normalizedPath;
 
   // Prevent accidental duplicate /api prefix when env uses .../api
   // and service paths already start with /api/...
-  if (API_BASE_URL.endsWith("/api") && normalizedPath.startsWith("/api/")) {
-    return `${API_BASE_URL}${normalizedPath.slice(4)}`;
+  if (baseUrl.endsWith("/api") && normalizedPath.startsWith("/api/")) {
+    return `${baseUrl}${normalizedPath.slice(4)}`;
   }
 
-  return `${API_BASE_URL}${normalizedPath}`;
+  return `${baseUrl}${normalizedPath}`;
 };
+
+const buildPrimaryUrl = (path) => joinUrl(API_BASE_URL, path);
+const buildLocalFallbackUrl = (path) => joinUrl(LOCAL_BACKEND_ORIGIN, path);
 
 const withTimeout = async (url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) => {
   const controller = new AbortController();
@@ -43,30 +49,41 @@ const backendHint = () => {
   return "Unable to reach backend API. Start backend (port 4000) and use frontend dev proxy or set REACT_APP_API_BASE_URL.";
 };
 
-const notFoundHint = (path) => {
-  if (!API_BASE_URL) return "";
-
-  if (API_BASE_URL.endsWith("/api") && path.startsWith("/api/")) {
-    return " If REACT_APP_API_BASE_URL already ends with /api, keep it as-is; duplicated /api paths are auto-normalized.";
-  }
-
-  return " Check that REACT_APP_API_BASE_URL points to backend root (e.g. http://localhost:4000) or leave it unset for dev proxy.";
-};
-
-export const apiRequest = async (path, options = {}) => {
-  let response;
-
+const requestOnce = async (url, options) => {
   try {
-    response = await withTimeout(buildUrl(path), {
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {}),
-      },
-      ...options,
-    });
+    return await withTimeout(url, options);
   } catch (error) {
     if (error?.name === "AbortError") {
       throw new Error(`Request timed out after ${DEFAULT_TIMEOUT_MS / 1000}s.`);
+    }
+    throw error;
+  }
+};
+
+export const apiRequest = async (path, options = {}) => {
+  const requestOptions = {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    ...options,
+  };
+
+  let response;
+
+  try {
+    const primaryUrl = buildPrimaryUrl(path);
+    response = await requestOnce(primaryUrl, requestOptions);
+
+    // If no explicit base URL is configured, a 404 can indicate the frontend host
+    // handled `/api/*` instead of backend. Retry once against local backend origin.
+    if (response.status === 404 && !API_BASE_URL) {
+      const fallbackUrl = buildLocalFallbackUrl(path);
+      response = await requestOnce(fallbackUrl, requestOptions);
+    }
+  } catch (error) {
+    if (error.message?.startsWith("Request timed out")) {
+      throw error;
     }
 
     throw new Error(backendHint());
@@ -80,11 +97,7 @@ export const apiRequest = async (path, options = {}) => {
   }
 
   if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error(`Request failed (404).${notFoundHint(path)}`);
-    }
-
-    const message = body?.message || `Request failed (${response.status})`;
+    const message = body?.message || `Request failed (${response.status}).`;
     throw new Error(message);
   }
 
