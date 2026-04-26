@@ -21,6 +21,12 @@ cp .env.example .env
 npm start
 ```
 
+
+Required auth env value:
+```bash
+FIREBASE_WEB_API_KEY=<firebaseConfig.apiKey from Firebase console>
+```
+
 ## API
 - `GET /api/health`
 - `POST /api/auth/register`

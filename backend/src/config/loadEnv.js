@@ -4,7 +4,11 @@ import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const envPath = path.resolve(__dirname, "../../.env");
+const envPaths = [
+  path.resolve(__dirname, "../../.env"),
+  path.resolve(__dirname, "../../../.env"),
+  path.resolve(__dirname, "../../../pqc-chat-ui/.env"),
+];
 
 const stripWrappingQuotes = (value) => {
   if (!value) return value;
@@ -29,7 +33,9 @@ const parseEnvLine = (line) => {
   return { key, value };
 };
 
-if (fs.existsSync(envPath)) {
+envPaths.forEach((envPath) => {
+  if (!fs.existsSync(envPath)) return;
+
   const file = fs.readFileSync(envPath, "utf8");
   file.split(/\r?\n/).forEach((line) => {
     const parsed = parseEnvLine(line);
@@ -38,4 +44,4 @@ if (fs.existsSync(envPath)) {
       process.env[parsed.key] = parsed.value;
     }
   });
-}
+});

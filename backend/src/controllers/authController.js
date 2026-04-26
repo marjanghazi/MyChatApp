@@ -6,11 +6,19 @@ const required = (value, name) => {
   }
 };
 
-const apiKey = process.env.FIREBASE_WEB_API_KEY;
+const getFirebaseWebApiKey = () =>
+  process.env.FIREBASE_WEB_API_KEY ||
+  process.env.FIREBASE_API_KEY ||
+  process.env.REACT_APP_FIREBASE_API_KEY ||
+  "";
 
 const authRequest = async (path, payload) => {
+  const apiKey = getFirebaseWebApiKey();
+
   if (!apiKey) {
-    const error = new Error("FIREBASE_WEB_API_KEY is missing on backend.");
+    const error = new Error(
+      "Firebase Web API key is missing. Set FIREBASE_WEB_API_KEY (preferred) in backend/.env, or FIREBASE_API_KEY, or REACT_APP_FIREBASE_API_KEY."
+    );
     error.statusCode = 500;
     throw error;
   }
