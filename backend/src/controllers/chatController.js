@@ -3,6 +3,36 @@ import { getFirestore } from "../config/firebaseAdmin.js";
 
 const db = getFirestore();
 
+const ALLOWED_CONVERSATION_META_KEYS = new Set([
+  "callState",
+  "typing",
+  "mutedBy",
+  "themeBy",
+  "participants",
+  "participantPhones",
+  "lastMessage",
+  "lastMessageType",
+  "lastMessageSender",
+  "lastMessageStatus",
+  "lastMessageAt",
+  "unreadBy",
+  "clearedAtBy",
+]);
+
+const ALLOWED_SIGNAL_TYPES = new Set(["offer", "answer", "candidate", "ice", "hangup"]);
+
+const sanitizeConversationPatch = (patch = {}) =>
+  Object.fromEntries(Object.entries(patch).filter(([key]) => ALLOWED_CONVERSATION_META_KEYS.has(key)));
+
+const mustThreadType = (threadType) => {
+  must(threadType, "threadType");
+  if (!["direct", "group", "channel"].includes(threadType)) {
+    const error = new Error("Unsupported threadType");
+    error.statusCode = 400;
+    throw error;
+  }
+};
+
 const must = (value, name) => {
   if (!value || (typeof value === "string" && !value.trim())) {
     const error = new Error(`${name} is required`);
@@ -32,7 +62,7 @@ export const sendMessage = async (req, res, next) => {
       replyTo,
     } = req.body;
 
-    must(threadType, "threadType");
+    mustThreadType(threadType);
     must(actorUid, "actorUid");
     must(actorName, "actorName");
 
@@ -137,7 +167,7 @@ const getMessageRef = ({ threadType, threadId, messageId }) => {
 export const editMessage = async (req, res, next) => {
   try {
     const { threadType, threadId, messageId, text } = req.body;
-    must(threadType, "threadType");
+    mustThreadType(threadType);
     must(threadId, "threadId");
     must(messageId, "messageId");
     must(text, "text");
@@ -171,7 +201,7 @@ export const deleteForMe = async (req, res, next) => {
 export const deleteForEveryone = async (req, res, next) => {
   try {
     const { threadType, threadId, messageId } = req.body;
-    must(threadType, "threadType");
+    mustThreadType(threadType);
     must(threadId, "threadId");
     must(messageId, "messageId");
 
@@ -194,7 +224,7 @@ export const deleteForEveryone = async (req, res, next) => {
 export const toggleMessageFlag = async (req, res, next) => {
   try {
     const { threadType, threadId, messageId, actorUid, key, alreadyFlagged } = req.body;
-    must(threadType, "threadType");
+    mustThreadType(threadType);
     must(threadId, "threadId");
     must(messageId, "messageId");
     must(actorUid, "actorUid");
@@ -216,20 +246,16 @@ const toDocs = (snapshot) => snapshot.docs.map((doc) => ({ id: doc.id, ...doc.da
 export const listThreadMessages = async (req, res, next) => {
   try {
     const { threadType, threadId, uid } = req.query;
-    must(threadType, "threadType");
+    mustThreadType(threadType);
     must(threadId, "threadId");
 
     let snapshot;
     if (threadType === "direct") {
-      snapshot = await db.collection("conversations").doc(threadId).collection("messages").orderBy("createdAt", "asc").get();
+      snapshot = await db.collection("conversations").doc(threadId).collection("messages").orderBy("createdAt", "asc").limit(300).get();
     } else if (threadType === "group") {
-      snapshot = await db.collection("groups").doc(threadId).collection("messages").orderBy("createdAt", "asc").get();
+      snapshot = await db.collection("groups").doc(threadId).collection("messages").orderBy("createdAt", "asc").limit(300).get();
     } else if (threadType === "channel") {
-      snapshot = await db.collection("channels").doc(threadId).collection("posts").orderBy("createdAt", "asc").get();
-    } else {
-      const error = new Error("Unsupported threadType");
-      error.statusCode = 400;
-      throw error;
+      snapshot = await db.collection("channels").doc(threadId).collection("posts").orderBy("createdAt", "asc").limit(300).get();
     }
 
     let messages = toDocs(snapshot);
@@ -246,7 +272,7 @@ export const listCallLogs = async (req, res, next) => {
   try {
     const { conversationId } = req.query;
     must(conversationId, "conversationId");
-    const snapshot = await db.collection("conversations").doc(conversationId).collection("callLogs").orderBy("createdAt", "desc").get();
+    const snapshot = await db.collection("conversations").doc(conversationId).collection("callLogs").orderBy("createdAt", "desc").limit(200).get();
     res.json({ logs: toDocs(snapshot) });
   } catch (error) {
     next(error);
@@ -322,8 +348,9 @@ export const updateConversationMeta = async (req, res, next) => {
   try {
     const { conversationId, patch = {} } = req.body;
     must(conversationId, "conversationId");
+    const sanitizedPatch = sanitizeConversationPatch(patch);
     await db.collection("conversations").doc(conversationId).set({
-      ...patch,
+      ...sanitizedPatch,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
     res.json({ ok: true });
@@ -364,6 +391,11 @@ export const addConversationSignal = async (req, res, next) => {
   try {
     const { conversationId, signal = {} } = req.body;
     must(conversationId, "conversationId");
+    if (signal?.type && !ALLOWED_SIGNAL_TYPES.has(signal.type)) {
+      const error = new Error("Unsupported signal type");
+      error.statusCode = 400;
+      throw error;
+    }
     await db.collection("conversations").doc(conversationId).collection("signals").add({
       ...signal,
       createdAt: FieldValue.serverTimestamp(),
@@ -381,7 +413,7 @@ export const clearConversationForUser = async (req, res, next) => {
     must(uid, "uid");
 
     const conversationRef = db.collection("conversations").doc(conversationId);
-    const snapshot = await conversationRef.collection("messages").get();
+    const snapshot = await conversationRef.collection("messages").limit(500).get();
     const batch = db.batch();
 
     snapshot.docs.forEach((entry) => {

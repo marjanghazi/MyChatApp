@@ -7,6 +7,7 @@
 
 ## Backend controls added
 - Chat domain handlers in `chatController` for message mutation/read flows, signaling, call logs, conversation seen/meta updates, and clear-for-user.
+- Chat controller now validates thread types/signal types and sanitizes conversation meta patch keys.
 - Storage path allow-lists in `mediaController` for upload/delete operations.
 
 ## Remaining architecture note
