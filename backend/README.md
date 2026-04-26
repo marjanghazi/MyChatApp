@@ -24,6 +24,10 @@ npm start
 ## API
 - `GET /api/health`
 - `POST /api/community/groups`
+- `POST /api/community/groups/:groupId/leave`
+- `POST /api/community/groups/:groupId/members/add`
+- `POST /api/community/groups/:groupId/members/remove`
+- `POST /api/community/groups/:groupId/admins/toggle`
 - `POST /api/community/channels`
 - `POST /api/community/channels/:channelId/follow`
 - `POST /api/community/channels/:channelId/unfollow`

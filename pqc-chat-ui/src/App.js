@@ -29,9 +29,13 @@ import CreateGroupModal   from "./components/community/CreateGroupModal";
 import CreateChannelModal from "./components/community/CreateChannelModal";
 import GroupDetailsPage from "./components/community/GroupDetailsPage";
 import {
+  addGroupMemberApi,
   createChannel,
   createGroup,
   followChannel,
+  leaveGroupApi,
+  removeGroupMemberApi,
+  toggleGroupAdminApi,
   unfollowChannel,
 } from "./services/communityService";
 import { addContactByPhoneApi, checkPhoneAvailability } from "./services/userService";
@@ -411,103 +415,57 @@ function App() {
     if (!authUser || activeThreadType !== "group" || !selectedGroup) return;
     const confirmed = window.confirm(`Leave ${selectedGroup.name}?`);
     if (!confirmed) return;
-    const groupSnap = await getDoc(doc(db, "groups", selectedGroup.id));
-    if (!groupSnap.exists()) {
-      setStatusText("Group no longer exists.");
-      return;
+
+    try {
+      await leaveGroupApi({ groupId: selectedGroup.id, userId: authUser.uid });
+      setShowGroupDetails(false);
+      setSelectedGroup(null);
+      setStatusText("✓ You left the group.");
+    } catch (error) {
+      setStatusText(error?.message || "Could not leave group.");
     }
-    await updateDoc(doc(db, "groups", selectedGroup.id), {
-      memberIds: arrayRemove(authUser.uid),
-      admins: arrayRemove(authUser.uid),
-      updatedAt: serverTimestamp(),
-    });
-    setShowGroupDetails(false);
-    setSelectedGroup(null);
-    setStatusText("✓ You left the group.");
   };
 
   const addGroupMember = async (memberUid) => {
-    if (!selectedGroup?.id || !memberUid) return;
-    const groupSnap = await getDoc(doc(db, "groups", selectedGroup.id));
-    if (!groupSnap.exists()) {
-      setStatusText("Group not found.");
-      return;
-    }
-    const groupData = groupSnap.data();
-    const isGroupAdmin = !!groupData.admins?.includes(authUser?.uid);
-    if (!isGroupAdmin) {
-      setStatusText("Only admins can add members.");
-      return;
-    }
+    if (!selectedGroup?.id || !memberUid || !authUser?.uid) return;
     try {
-      await updateDoc(doc(db, "groups", selectedGroup.id), {
-        memberIds: arrayUnion(memberUid),
-        updatedAt: serverTimestamp(),
+      await addGroupMemberApi({
+        groupId: selectedGroup.id,
+        requesterId: authUser.uid,
+        memberUid,
       });
       setStatusText("✓ Member added to group.");
     } catch (e) {
-      setStatusText(`Could not add member: ${e.message}`);
+      setStatusText(e?.message || "Could not add member.");
     }
   };
 
   const toggleGroupAdmin = async (memberUid, makeAdmin) => {
-    if (!selectedGroup?.id || !memberUid) return;
-    const groupSnap = await getDoc(doc(db, "groups", selectedGroup.id));
-    if (!groupSnap.exists()) {
-      setStatusText("Group not found.");
-      return;
-    }
-    const groupData = groupSnap.data();
-    const isGroupAdmin = !!groupData.admins?.includes(authUser?.uid);
-    if (!isGroupAdmin) {
-      setStatusText("Only admins can update admin rights.");
-      return;
-    }
-    if (!makeAdmin && memberUid === groupData.createdBy) {
-      setStatusText("Group creator must remain an admin.");
-      return;
-    }
+    if (!selectedGroup?.id || !memberUid || !authUser?.uid) return;
     try {
-      await updateDoc(doc(db, "groups", selectedGroup.id), {
-        admins: makeAdmin ? arrayUnion(memberUid) : arrayRemove(memberUid),
-        updatedAt: serverTimestamp(),
+      await toggleGroupAdminApi({
+        groupId: selectedGroup.id,
+        requesterId: authUser.uid,
+        memberUid,
+        makeAdmin,
       });
       setStatusText(makeAdmin ? "✓ Admin granted." : "✓ Admin removed.");
     } catch (e) {
-      setStatusText(`Could not update admin role: ${e.message}`);
+      setStatusText(e?.message || "Could not update admin role.");
     }
   };
 
   const removeGroupMember = async (memberUid) => {
-    if (!selectedGroup?.id || !memberUid) return;
-    const groupSnap = await getDoc(doc(db, "groups", selectedGroup.id));
-    if (!groupSnap.exists()) {
-      setStatusText("Group not found.");
-      return;
-    }
-    const groupData = groupSnap.data();
-    const isGroupAdmin = !!groupData.admins?.includes(authUser?.uid);
-    if (!isGroupAdmin) {
-      setStatusText("Only admins can remove members.");
-      return;
-    }
-    if (memberUid === authUser?.uid) {
-      setStatusText("Use Leave Group to remove yourself.");
-      return;
-    }
-    if (memberUid === groupData.createdBy) {
-      setStatusText("Group creator cannot be removed.");
-      return;
-    }
+    if (!selectedGroup?.id || !memberUid || !authUser?.uid) return;
     try {
-      await updateDoc(doc(db, "groups", selectedGroup.id), {
-        memberIds: arrayRemove(memberUid),
-        admins: arrayRemove(memberUid),
-        updatedAt: serverTimestamp(),
+      await removeGroupMemberApi({
+        groupId: selectedGroup.id,
+        requesterId: authUser.uid,
+        memberUid,
       });
       setStatusText("✓ Member removed.");
     } catch (e) {
-      setStatusText(`Could not remove member: ${e.message}`);
+      setStatusText(e?.message || "Could not remove member.");
     }
   };
 

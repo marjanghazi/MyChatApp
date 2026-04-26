@@ -1,3 +1,4 @@
+import { FieldValue } from "firebase-admin/firestore";
 import { getFirestore } from "../config/firebaseAdmin.js";
 
 const db = getFirestore();
@@ -132,6 +133,136 @@ export const unfollowChannel = async (req, res, next) => {
         followerIds: nextFollowers,
         updatedAt: new Date(),
       });
+    });
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const groupDoc = (groupId) => groupsCollection().doc(groupId);
+
+const getGroupOrThrow = async (groupId) => {
+  const snapshot = await groupDoc(groupId).get();
+  if (!snapshot.exists) {
+    const error = new Error("Group not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  return { ref: snapshot.ref, data: snapshot.data() };
+};
+
+export const leaveGroup = async (req, res, next) => {
+  try {
+    const { groupId } = req.params;
+    const { userId } = req.body;
+    must(groupId, "groupId");
+    must(userId, "userId");
+
+    const { ref } = await getGroupOrThrow(groupId);
+    await ref.update({
+      memberIds: FieldValue.arrayRemove(userId),
+      admins: FieldValue.arrayRemove(userId),
+      updatedAt: new Date(),
+    });
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addGroupMember = async (req, res, next) => {
+  try {
+    const { groupId } = req.params;
+    const { requesterId, memberUid } = req.body;
+    must(groupId, "groupId");
+    must(requesterId, "requesterId");
+    must(memberUid, "memberUid");
+
+    const { ref, data } = await getGroupOrThrow(groupId);
+    if (!data.admins?.includes(requesterId)) {
+      const error = new Error("Only admins can add members.");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    await ref.update({
+      memberIds: FieldValue.arrayUnion(memberUid),
+      updatedAt: new Date(),
+    });
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const toggleGroupAdmin = async (req, res, next) => {
+  try {
+    const { groupId } = req.params;
+    const { requesterId, memberUid, makeAdmin } = req.body;
+    must(groupId, "groupId");
+    must(requesterId, "requesterId");
+    must(memberUid, "memberUid");
+
+    const { ref, data } = await getGroupOrThrow(groupId);
+    if (!data.admins?.includes(requesterId)) {
+      const error = new Error("Only admins can update admin rights.");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    if (!makeAdmin && memberUid === data.createdBy) {
+      const error = new Error("Group creator must remain an admin.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    await ref.update({
+      admins: makeAdmin ? FieldValue.arrayUnion(memberUid) : FieldValue.arrayRemove(memberUid),
+      updatedAt: new Date(),
+    });
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const removeGroupMember = async (req, res, next) => {
+  try {
+    const { groupId } = req.params;
+    const { requesterId, memberUid } = req.body;
+    must(groupId, "groupId");
+    must(requesterId, "requesterId");
+    must(memberUid, "memberUid");
+
+    const { ref, data } = await getGroupOrThrow(groupId);
+
+    if (!data.admins?.includes(requesterId)) {
+      const error = new Error("Only admins can remove members.");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    if (memberUid === requesterId) {
+      const error = new Error("Use Leave Group to remove yourself.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (memberUid === data.createdBy) {
+      const error = new Error("Group creator cannot be removed.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    await ref.update({
+      memberIds: FieldValue.arrayRemove(memberUid),
+      admins: FieldValue.arrayRemove(memberUid),
+      updatedAt: new Date(),
     });
 
     res.json({ ok: true });
