@@ -5,7 +5,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
-} from "firebase/auth";
+} from "./services/authService";
 import CreateGroupModal   from "./components/community/CreateGroupModal";
 import CreateChannelModal from "./components/community/CreateChannelModal";
 import GroupDetailsPage from "./components/community/GroupDetailsPage";
@@ -29,7 +29,6 @@ import {
 } from "./services/userService";
 import { uploadMedia } from "./services/mediaService";
 import { fetchChannels, fetchConversations, fetchGroups, fetchUsers, markDelivered } from "./services/threadService";
-import { auth } from "./firebase";
 import "./App.css";
 import PublicHomePage from "./pages/PublicHomePage";
 import AuthPage       from "./pages/AuthPage";
@@ -97,7 +96,7 @@ function App() {
 
   // ── Auth state ───────────────────────────────────────────────────────────
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(async (user) => {
       setAuthUser(user);
       setAuthReady(true);
       setAuthError("");
@@ -318,8 +317,7 @@ function App() {
         const { available, normalizedPhone, phoneVariants } = await checkPhoneAvailability(authForm.phoneNumber);
         if (!available) throw new Error("This phone number is already linked to another account.");
 
-        const creds = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
-        await updateProfile(creds.user, { displayName: authForm.displayName.trim() });
+        const creds = await createUserWithEmailAndPassword(authForm.email, authForm.password, authForm.displayName.trim());
         await upsertUserProfile({
           uid: creds.user.uid,
           displayName: authForm.displayName.trim(),
@@ -328,7 +326,7 @@ function App() {
           phoneLookupKeys: phoneVariants,
         });
       } else {
-        await signInWithEmailAndPassword(auth, authForm.email, authForm.password);
+        await signInWithEmailAndPassword(authForm.email, authForm.password);
       }
       setAuthForm({ displayName: "", phoneNumber: "", email: "", password: "" });
       setPublicView("login");
@@ -507,7 +505,7 @@ function App() {
     } catch (e) {
       console.warn("Failed to update online status during logout:", e);
     } finally {
-      await signOut(auth);
+      await signOut();
     }
   };
 

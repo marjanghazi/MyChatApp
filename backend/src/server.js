@@ -5,6 +5,7 @@ import communityRoutes from "./routes/communityRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import threadRoutes from "./routes/threadRoutes.js";
 import mediaRoutes from "./routes/mediaRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
 import { errorHandler, notFoundHandler } from "./lib/errorHandler.js";
 
 const app = express();
@@ -21,6 +22,7 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "pqc-chat-backend" });
 });
 
+app.use("/api/auth", authRoutes);
 app.use("/api/community", communityRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/thread", threadRoutes);

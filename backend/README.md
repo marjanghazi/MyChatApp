@@ -23,6 +23,9 @@ npm start
 
 ## API
 - `GET /api/health`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/update-profile`
 - `POST /api/community/groups`
 - `POST /api/community/groups/:groupId/leave`
 - `POST /api/community/groups/:groupId/members/add`
