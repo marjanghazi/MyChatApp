@@ -11,4 +11,4 @@
 - Storage path allow-lists in `mediaController` for upload/delete operations.
 
 ## Migration conclusion
-Backend ownership is complete for runtime app behavior: `pqc-chat-ui` acts as an API client/UI layer and backend handles persistence/domain logic.
+Backend ownership is complete for runtime app behavior: `frontend` acts as an API client/UI layer and backend handles persistence/domain logic.
