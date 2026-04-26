@@ -5,18 +5,27 @@ This folder is the single backend source for both:
 - future mobile applications
 
 ## Contents
-- `src/` — backend server implementation
+- `src/` — backend server implementation and API routes
 - `firebase/` — backend Firebase configuration artifacts:
   - `firestore.indexes.json`
   - `storage.rules`
 - `.env.example` — environment variable template
 
-## Run backend
+## Setup
 ```bash
 cd backend
 npm install
+cp .env.example .env
 npm start
 ```
 
-Default health endpoint:
+## API
 - `GET /api/health`
+- `POST /api/community/groups`
+- `POST /api/community/channels`
+- `POST /api/community/channels/:channelId/follow`
+- `POST /api/community/channels/:channelId/unfollow`
+
+## Notes
+- Keep all backend logic in this folder so both web and mobile apps call the same API layer.
+- `pqc-chat-ui/` should stay frontend-only.

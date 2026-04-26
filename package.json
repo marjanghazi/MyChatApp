@@ -1,0 +1,12 @@
+{
+  "name": "mychatapp",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "pqc-chat-ui"
+  ],
+  "scripts": {
+    "start:backend": "npm --prefix backend start",
+    "start:frontend": "npm --prefix pqc-chat-ui start"
+  }
+}
