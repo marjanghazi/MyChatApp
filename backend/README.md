@@ -29,6 +29,11 @@ npm start
 - `POST /api/community/channels/:channelId/unfollow`
 - `POST /api/users/check-phone`
 - `POST /api/users/:uid/contacts`
+- `GET /api/thread/users?excludeUid=...`
+- `GET /api/thread/conversations?uid=...`
+- `PATCH /api/thread/conversations/:conversationId/delivered`
+- `GET /api/thread/groups?uid=...`
+- `GET /api/thread/channels`
 
 ## Frontend integration
 In `pqc-chat-ui/.env` set:

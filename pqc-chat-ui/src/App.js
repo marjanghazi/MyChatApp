@@ -35,6 +35,7 @@ import {
   unfollowChannel,
 } from "./services/communityService";
 import { addContactByPhoneApi, checkPhoneAvailability } from "./services/userService";
+import { fetchChannels, fetchConversations, fetchGroups, fetchUsers, markDelivered } from "./services/threadService";
 import {
   deleteObject,
   getDownloadURL,
@@ -170,19 +171,45 @@ function App() {
   // ── Users ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!authUser) return undefined;
-    const q = query(collection(db, "users"), where("uid", "!=", authUser.uid));
-    return onSnapshot(q, (snap) => setAllUsers(snap.docs.map((e) => e.data())));
+
+    let active = true;
+    const load = async () => {
+      try {
+        const { users } = await fetchUsers(authUser.uid);
+        if (active) setAllUsers(users || []);
+      } catch {
+        if (active) setAllUsers([]);
+      }
+    };
+
+    load();
+    const timer = setInterval(load, 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
   }, [authUser]);
 
   // ── Conversations ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!authUser) return undefined;
-    const q = query(collection(db, "conversations"), where("participants", "array-contains", authUser.uid));
-    return onSnapshot(q, (snap) => {
-      const next = {};
-      snap.forEach((e) => { next[e.id] = e.data(); });
-      setConversations(next);
-    });
+
+    let active = true;
+    const load = async () => {
+      try {
+        const { conversations: next } = await fetchConversations(authUser.uid);
+        if (active) setConversations(next || {});
+      } catch {
+        if (active) setConversations({});
+      }
+    };
+
+    load();
+    const timer = setInterval(load, 3000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
   }, [authUser]);
 
   useEffect(() => {
@@ -193,31 +220,56 @@ function App() {
       conv.lastMessageStatus === "sent"
     );
     pendingDeliveries.forEach(([conversationId]) => {
-      updateDoc(doc(db, "conversations", conversationId), {
-        lastMessageStatus: "delivered",
-        updatedAt: serverTimestamp(),
-      }).catch(() => {});
+      markDelivered(conversationId).catch(() => {});
     });
   }, [conversations, authUser?.uid]);
 
   // ── Groups ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!authUser) return undefined;
-    const q = query(collection(db, "groups"), where("memberIds", "array-contains", authUser.uid));
-    return onSnapshot(q, (snap) => {
-      const next = snap.docs.map((e) => ({ id: e.id, ...e.data() }));
-      setGroups(next.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
-    });
+
+    let active = true;
+    const load = async () => {
+      try {
+        const { groups: next } = await fetchGroups(authUser.uid);
+        if (active) setGroups(next || []);
+      } catch {
+        if (active) setGroups([]);
+      }
+    };
+
+    load();
+    const timer = setInterval(load, 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
   }, [authUser]);
 
   // ── Channels ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!authUser) return undefined;
-    return onSnapshot(collection(db, "channels"), (snap) => {
-      const channels = snap.docs.map((e) => ({ id: e.id, ...e.data() }));
-      setFollowedChannels(channels.filter((c) => (c.followerIds || []).includes(authUser.uid)));
-      setDiscoverChannels(channels.filter((c) => !(c.followerIds || []).includes(authUser.uid)));
-    });
+
+    let active = true;
+    const load = async () => {
+      try {
+        const { channels = [] } = await fetchChannels();
+        if (!active) return;
+        setFollowedChannels(channels.filter((c) => (c.followerIds || []).includes(authUser.uid)));
+        setDiscoverChannels(channels.filter((c) => !(c.followerIds || []).includes(authUser.uid)));
+      } catch {
+        if (!active) return;
+        setFollowedChannels([]);
+        setDiscoverChannels([]);
+      }
+    };
+
+    load();
+    const timer = setInterval(load, 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
   }, [authUser]);
 
   useEffect(() => { setProfileNameInput(profile?.displayName || ""); }, [profile?.displayName]);
