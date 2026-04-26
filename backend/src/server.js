@@ -6,7 +6,6 @@ import userRoutes from "./routes/userRoutes.js";
 import threadRoutes from "./routes/threadRoutes.js";
 import mediaRoutes from "./routes/mediaRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
-import dbRoutes from "./routes/dbRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import { errorHandler, notFoundHandler } from "./lib/errorHandler.js";
 
@@ -29,7 +28,6 @@ app.use("/api/community", communityRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/thread", threadRoutes);
 app.use("/api/media", mediaRoutes);
-app.use("/api/db", dbRoutes);
 app.use("/api/chat", chatRoutes);
 app.use(notFoundHandler);
 app.use(errorHandler);
