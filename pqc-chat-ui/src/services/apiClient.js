@@ -9,6 +9,15 @@ const API_BASE_URL = sanitizeBaseUrl(process.env.REACT_APP_API_BASE_URL);
 
 const buildUrl = (path) => {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (!API_BASE_URL) return normalizedPath;
+
+  // Prevent accidental duplicate /api prefix when env uses .../api
+  // and service paths already start with /api/...
+  if (API_BASE_URL.endsWith("/api") && normalizedPath.startsWith("/api/")) {
+    return `${API_BASE_URL}${normalizedPath.slice(4)}`;
+  }
+
   return `${API_BASE_URL}${normalizedPath}`;
 };
 
@@ -32,6 +41,16 @@ const backendHint = () => {
   }
 
   return "Unable to reach backend API. Start backend (port 4000) and use frontend dev proxy or set REACT_APP_API_BASE_URL.";
+};
+
+const notFoundHint = (path) => {
+  if (!API_BASE_URL) return "";
+
+  if (API_BASE_URL.endsWith("/api") && path.startsWith("/api/")) {
+    return " If REACT_APP_API_BASE_URL already ends with /api, keep it as-is; duplicated /api paths are auto-normalized.";
+  }
+
+  return " Check that REACT_APP_API_BASE_URL points to backend root (e.g. http://localhost:4000) or leave it unset for dev proxy.";
 };
 
 export const apiRequest = async (path, options = {}) => {
@@ -61,6 +80,10 @@ export const apiRequest = async (path, options = {}) => {
   }
 
   if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(`Request failed (404).${notFoundHint(path)}`);
+    }
+
     const message = body?.message || `Request failed (${response.status})`;
     throw new Error(message);
   }
