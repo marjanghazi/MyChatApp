@@ -4,6 +4,7 @@ import express from "express";
 import communityRoutes from "./routes/communityRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import threadRoutes from "./routes/threadRoutes.js";
+import mediaRoutes from "./routes/mediaRoutes.js";
 import { errorHandler, notFoundHandler } from "./lib/errorHandler.js";
 
 const app = express();
@@ -23,6 +24,7 @@ app.get("/api/health", (_req, res) => {
 app.use("/api/community", communityRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/thread", threadRoutes);
+app.use("/api/media", mediaRoutes);
 app.use(notFoundHandler);
 app.use(errorHandler);
 

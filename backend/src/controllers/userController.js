@@ -48,6 +48,90 @@ export const checkPhoneAvailability = async (req, res, next) => {
   }
 };
 
+export const upsertUserProfile = async (req, res, next) => {
+  try {
+    const { uid, displayName = "", email = "", phoneNumber = "", phoneLookupKeys = [] } = req.body;
+    must(uid, "uid");
+
+    const now = new Date();
+    await usersCollection().doc(uid).set(
+      {
+        uid,
+        displayName,
+        email,
+        phoneNumber,
+        phoneLookupKeys,
+        contacts: [],
+        isOnline: true,
+        lastSeen: now,
+        activeAt: now,
+        createdAt: now,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getUserProfile = async (req, res, next) => {
+  try {
+    const { uid } = req.params;
+    must(uid, "uid");
+
+    const snap = await usersCollection().doc(uid).get();
+    if (!snap.exists) {
+      res.json({ profile: null });
+      return;
+    }
+
+    res.json({ profile: snap.data() });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const setPresence = async (req, res, next) => {
+  try {
+    const { uid } = req.params;
+    const { isOnline } = req.body;
+    must(uid, "uid");
+
+    await usersCollection().doc(uid).set(
+      {
+        isOnline: Boolean(isOnline),
+        lastSeen: new Date(),
+        activeAt: new Date(),
+      },
+      { merge: true }
+    );
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateUserProfile = async (req, res, next) => {
+  try {
+    const { uid } = req.params;
+    must(uid, "uid");
+
+    const allowed = ["displayName", "photoURL", "logoURL"];
+    const patch = Object.fromEntries(
+      Object.entries(req.body || {}).filter(([key, value]) => allowed.includes(key) && value != null)
+    );
+
+    await usersCollection().doc(uid).set({ ...patch, updatedAt: new Date() }, { merge: true });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const addContactByPhone = async (req, res, next) => {
   try {
     const { uid } = req.params;

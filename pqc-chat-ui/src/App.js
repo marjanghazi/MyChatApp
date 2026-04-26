@@ -6,25 +6,6 @@ import {
   signOut,
   updateProfile,
 } from "firebase/auth";
-import {
-  addDoc,
-  arrayRemove,
-  arrayUnion,
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  increment,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-  writeBatch,
-} from "firebase/firestore";
 import CreateGroupModal   from "./components/community/CreateGroupModal";
 import CreateChannelModal from "./components/community/CreateChannelModal";
 import GroupDetailsPage from "./components/community/GroupDetailsPage";
@@ -38,22 +19,22 @@ import {
   toggleGroupAdminApi,
   unfollowChannel,
 } from "./services/communityService";
-import { addContactByPhoneApi, checkPhoneAvailability } from "./services/userService";
-import { fetchChannels, fetchConversations, fetchGroups, fetchUsers, markDelivered } from "./services/threadService";
 import {
-  deleteObject,
-  getDownloadURL,
-  ref,
-  uploadBytesResumable,
-} from "firebase/storage";
-import { auth, db, storage } from "./firebase";
+  addContactByPhoneApi,
+  checkPhoneAvailability,
+  fetchUserProfile,
+  setPresence,
+  updateUserProfile,
+  upsertUserProfile,
+} from "./services/userService";
+import { uploadMedia } from "./services/mediaService";
+import { fetchChannels, fetchConversations, fetchGroups, fetchUsers, markDelivered } from "./services/threadService";
+import { auth } from "./firebase";
 import "./App.css";
 import PublicHomePage from "./pages/PublicHomePage";
 import AuthPage       from "./pages/AuthPage";
 import Sidebar        from "./components/Sidebar";
 import ChatWindow     from "./components/chatwindow/ChatWindow";
-
-const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
 
 const normalizePhone = (raw) => raw.replace(/\D/g, "");
 const conversationIdFor = (uidA, uidB) => [uidA, uidB].sort().join("_");
@@ -128,14 +109,11 @@ function App() {
         return;
       }
       try {
-        await setDoc(doc(db, "users", user.uid), {
-          uid:         user.uid,
+        await upsertUserProfile({
+          uid: user.uid,
           displayName: user.displayName || user.email?.split("@")[0] || "User",
-          email:       user.email || "",
-          isOnline:    true,
-          lastSeen:    serverTimestamp(),
-          createdAt:   serverTimestamp(),
-        }, { merge: true });
+          email: user.email || "",
+        });
       } catch {
         setAuthError("Unable to sync profile. Check network and try again.");
       }
@@ -147,28 +125,38 @@ function App() {
   useEffect(() => {
     if (!authUser) return undefined;
 
-    const userRef        = doc(db, "users", authUser.uid);
-    let heartbeatTimer   = null;
+    let heartbeatTimer = null;
+    let profileTimer = null;
 
-    const updatePresence = async (isOnline) => {
-      await setDoc(userRef, { isOnline, lastSeen: serverTimestamp(), activeAt: serverTimestamp() }, { merge: true });
+    const updatePresenceState = async (isOnline) => {
+      try {
+        await setPresence(authUser.uid, isOnline);
+      } catch {}
     };
 
-    const unsubscribe       = onSnapshot(userRef, (snap) => setProfile(snap.exists() ? snap.data() : null));
-    const markOffline       = () => updatePresence(false);
-    const handleVisibility  = () => updatePresence(!document.hidden);
+    const loadProfile = async () => {
+      try {
+        const { profile: current } = await fetchUserProfile(authUser.uid);
+        setProfile(current || null);
+      } catch {}
+    };
 
-    updatePresence(true);
-    heartbeatTimer = window.setInterval(() => updatePresence(!document.hidden), 60_000);
+    const markOffline = () => updatePresenceState(false);
+    const handleVisibility = () => updatePresenceState(!document.hidden);
+
+    updatePresenceState(true);
+    loadProfile();
+    heartbeatTimer = window.setInterval(() => updatePresenceState(!document.hidden), 60_000);
+    profileTimer = window.setInterval(loadProfile, 4000);
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("beforeunload", markOffline);
 
     return () => {
       window.clearInterval(heartbeatTimer);
+      window.clearInterval(profileTimer);
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("beforeunload", markOffline);
       markOffline();
-      unsubscribe();
     };
   }, [authUser]);
 
@@ -332,16 +320,12 @@ function App() {
 
         const creds = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
         await updateProfile(creds.user, { displayName: authForm.displayName.trim() });
-        await setDoc(doc(db, "users", creds.user.uid), {
-          uid:             creds.user.uid,
-          displayName:     authForm.displayName.trim(),
-          email:           authForm.email.trim(),
-          phoneNumber:     normalizedPhone,
+        await upsertUserProfile({
+          uid: creds.user.uid,
+          displayName: authForm.displayName.trim(),
+          email: authForm.email.trim(),
+          phoneNumber: normalizedPhone,
           phoneLookupKeys: phoneVariants,
-          contacts:        [],
-          isOnline:        true,
-          lastSeen:        serverTimestamp(),
-          createdAt:       serverTimestamp(),
         });
       } else {
         await signInWithEmailAndPassword(auth, authForm.email, authForm.password);
@@ -477,7 +461,7 @@ function App() {
     try {
       const displayName = profileNameInput.trim();
       await updateProfile(authUser, { displayName });
-      await updateDoc(doc(db, "users", authUser.uid), { displayName });
+      await updateUserProfile(authUser.uid, { displayName });
       setStatusText("✓ Identity updated.");
     } catch {
       setStatusText("✗ Update failed.");
@@ -490,9 +474,9 @@ function App() {
     if (!authUser || !file) return;
     setUpdatingProfile(true);
     try {
-      const photoURL = await uploadToStorage(`avatars/${authUser.uid}`, file);
+      const { url: photoURL } = await uploadMedia({ uid: authUser.uid, folder: "avatars", file });
       await updateProfile(authUser, { photoURL });
-      await updateDoc(doc(db, "users", authUser.uid), { photoURL });
+      await updateUserProfile(authUser.uid, { photoURL });
       setStatusText("✓ Profile picture updated.");
     } catch {
       setStatusText("✗ Upload failed.");
@@ -505,8 +489,8 @@ function App() {
     if (!authUser || !file) return;
     setUpdatingProfile(true);
     try {
-      const logoURL = await uploadToStorage(`logos/${authUser.uid}`, file);
-      await updateDoc(doc(db, "users", authUser.uid), { logoURL });
+      const { url: logoURL } = await uploadMedia({ uid: authUser.uid, folder: "logos", file });
+      await updateUserProfile(authUser.uid, { logoURL });
       setStatusText("✓ Logo updated.");
     } catch {
       setStatusText("✗ Logo upload failed.");
@@ -515,43 +499,10 @@ function App() {
     }
   };
 
-  const uploadToStorage = async (path, file) => {
-    if (!file) throw new Error("File missing.");
-    if (file.size > MAX_FILE_SIZE_BYTES) throw new Error("File too large. Max 15 MB.");
-
-    const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        uploadTask.cancel();
-        reject(new Error("Upload timed out. Check Firebase Storage bucket/rules and try again."));
-      }, 45000);
-
-      uploadTask.on(
-        "state_changed",
-        () => {},
-        async (err) => {
-          clearTimeout(timeoutId);
-          try { await deleteObject(storageRef); } catch {}
-          reject(err);
-        },
-        async () => {
-          clearTimeout(timeoutId);
-          resolve(await getDownloadURL(uploadTask.snapshot.ref));
-        }
-      );
-    });
-  };
-
   const logout = async () => {
     try {
       if (authUser) {
-        await updateDoc(doc(db, "users", authUser.uid), {
-          isOnline:  false,
-          lastSeen:  serverTimestamp(),
-          activeAt:  serverTimestamp(),
-        });
+        await setPresence(authUser.uid, false);
       }
     } catch (e) {
       console.warn("Failed to update online status during logout:", e);

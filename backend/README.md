@@ -32,6 +32,11 @@ npm start
 - `POST /api/community/channels/:channelId/follow`
 - `POST /api/community/channels/:channelId/unfollow`
 - `POST /api/users/check-phone`
+- `POST /api/users/profile`
+- `GET /api/users/:uid/profile`
+- `POST /api/users/:uid/presence`
+- `PATCH /api/users/:uid/profile`
+- `POST /api/media/upload`
 - `POST /api/users/:uid/contacts`
 - `GET /api/thread/users?excludeUid=...`
 - `GET /api/thread/conversations?uid=...`
