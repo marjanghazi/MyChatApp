@@ -316,3 +316,87 @@ export const markConversationSeen = async (req, res, next) => {
     next(error);
   }
 };
+
+
+export const updateConversationMeta = async (req, res, next) => {
+  try {
+    const { conversationId, patch = {} } = req.body;
+    must(conversationId, "conversationId");
+    await db.collection("conversations").doc(conversationId).set({
+      ...patch,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addConversationCallLog = async (req, res, next) => {
+  try {
+    const { conversationId, callData = {} } = req.body;
+    must(conversationId, "conversationId");
+    await db.collection("conversations").doc(conversationId).collection("callLogs").add({
+      ...callData,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addConversationMessage = async (req, res, next) => {
+  try {
+    const { conversationId, message = {} } = req.body;
+    must(conversationId, "conversationId");
+    await db.collection("conversations").doc(conversationId).collection("messages").add({
+      ...message,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addConversationSignal = async (req, res, next) => {
+  try {
+    const { conversationId, signal = {} } = req.body;
+    must(conversationId, "conversationId");
+    await db.collection("conversations").doc(conversationId).collection("signals").add({
+      ...signal,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const clearConversationForUser = async (req, res, next) => {
+  try {
+    const { conversationId, uid } = req.body;
+    must(conversationId, "conversationId");
+    must(uid, "uid");
+
+    const conversationRef = db.collection("conversations").doc(conversationId);
+    const snapshot = await conversationRef.collection("messages").get();
+    const batch = db.batch();
+
+    snapshot.docs.forEach((entry) => {
+      batch.update(entry.ref, { deletedFor: FieldValue.arrayUnion(uid) });
+    });
+
+    batch.set(conversationRef, {
+      clearedAtBy: { [uid]: FieldValue.serverTimestamp() },
+      unreadBy: { [uid]: 0 },
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    await batch.commit();
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};

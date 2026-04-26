@@ -49,3 +49,34 @@ export const markConversationSeen = (conversationId, uid) =>
     method: "PATCH",
     body: JSON.stringify({ conversationId, uid }),
   });
+
+
+export const updateConversationMeta = (conversationId, patch) =>
+  apiRequest("/api/chat/conversations/meta", {
+    method: "PATCH",
+    body: JSON.stringify({ conversationId, patch }),
+  });
+
+export const addConversationCallLog = (conversationId, callData) =>
+  apiRequest("/api/chat/conversations/call-logs", {
+    method: "POST",
+    body: JSON.stringify({ conversationId, callData }),
+  });
+
+export const addConversationMessage = (conversationId, message) =>
+  apiRequest("/api/chat/conversations/messages", {
+    method: "POST",
+    body: JSON.stringify({ conversationId, message }),
+  });
+
+export const addConversationSignal = (conversationId, signal) =>
+  apiRequest("/api/chat/conversations/signals", {
+    method: "POST",
+    body: JSON.stringify({ conversationId, signal }),
+  });
+
+export const clearConversationForUser = (conversationId, uid) =>
+  apiRequest("/api/chat/conversations/clear", {
+    method: "POST",
+    body: JSON.stringify({ conversationId, uid }),
+  });

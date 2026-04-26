@@ -4,26 +4,6 @@ import "./chatwindow.header.css";
 import "./chatwindow.messages.css";
 import "./chatwindow.composer.css";
 import "./chatwindow.overlays.css";
-import {
-  addDoc,
-  arrayRemove,
-  arrayUnion,
-  collection,
-  db,
-  deleteDoc,
-  deleteObject,
-  doc,
-  getDocs,
-  getDownloadURL,
-  increment,
-  ref,
-  serverTimestamp,
-  setDoc,
-  storage,
-  updateDoc,
-  uploadBytesResumable,
-  writeBatch,
-} from "../../services/firebaseCompat";
 import { ICE_SERVERS, MAX_FILE_SIZE_BYTES, THEMES } from "./chatConstants";
 import {
   conversationIdFor,
@@ -51,7 +31,13 @@ import {
   fetchSignals,
   deleteSignal as deleteSignalApi,
   markConversationSeen,
+  updateConversationMeta,
+  addConversationCallLog,
+  addConversationMessage,
+  addConversationSignal,
+  clearConversationForUser,
 } from "../../services/chatService";
+import { uploadMedia } from "../../services/mediaService";
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -381,17 +367,12 @@ const ChatWindow = ({
 
   /** Save only the call log subcollection entry (no chat message). */
   const saveCallLogOnly = async (callData) => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
+    if (!authUser?.uid || !selectedConversationId) return;
     try {
-      const conversationRef = doc(db, "conversations", selectedConversationId);
-      await setDoc(conversationRef, {
+      await updateConversationMeta(selectedConversationId, {
         participants: [authUser.uid, selectedUser?.uid],
-        updatedAt:    serverTimestamp(),
-      }, { merge: true });
-      await addDoc(collection(conversationRef, "callLogs"), {
-        ...callData,
-        createdAt: serverTimestamp(),
       });
+      await addConversationCallLog(selectedConversationId, callData);
     } catch (e) {
       console.error("saveCallLogOnly error:", e);
     }
@@ -402,30 +383,20 @@ const ChatWindow = ({
    * Called only by the party who explicitly ends the call (endCall).
    */
   const saveCallLogAndMessage = async (callData) => {
-    if (!db || !authUser?.uid || !selectedConversationId || !selectedUser?.uid) return;
+    if (!authUser?.uid || !selectedConversationId || !selectedUser?.uid) return;
     try {
-      const conversationRef = doc(db, "conversations", selectedConversationId);
-      await setDoc(conversationRef, {
+      await updateConversationMeta(selectedConversationId, {
         participants: [authUser.uid, selectedUser.uid],
-        updatedAt:    serverTimestamp(),
-      }, { merge: true });
-
-      // Log entry
-      await addDoc(collection(conversationRef, "callLogs"), {
-        ...callData,
-        createdAt: serverTimestamp(),
       });
-
-      // Chat message so the call shows inline in the conversation
-      await addDoc(collection(conversationRef, "messages"), {
-        type:       "call",
-        callType:   callData.type,          // "audio" | "video"
-        callStatus: callData.status,        // "completed" | "missed" | "cancelled"
-        duration:   callData.duration || 0,
-        senderId:   callData.callerId,
+      await addConversationCallLog(selectedConversationId, callData);
+      await addConversationMessage(selectedConversationId, {
+        type: "call",
+        callType: callData.type,
+        callStatus: callData.status,
+        duration: callData.duration || 0,
+        senderId: callData.callerId,
         receiverId: callData.receiverId,
-        createdAt:  serverTimestamp(),
-        readBy:     [authUser.uid],
+        readBy: [authUser.uid],
       });
     } catch (e) {
       console.error("saveCallLogAndMessage error:", e);
@@ -433,10 +404,9 @@ const ChatWindow = ({
   };
 
   const setCallState = async (nextCallState) => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
+    if (!authUser?.uid || !selectedConversationId) return;
     try {
-      const conversationRef = doc(db, "conversations", selectedConversationId);
-      await setDoc(conversationRef, { callState: nextCallState }, { merge: true });
+      await updateConversationMeta(selectedConversationId, { callState: nextCallState });
       if (onUpdateCallState) onUpdateCallState(nextCallState);
     } catch (e) {
       console.error("setCallState error:", e);
@@ -444,15 +414,12 @@ const ChatWindow = ({
   };
 
   const sendCallSignal = async (payload) => {
-    if (!db || !authUser?.uid || !selectedUser?.uid || !selectedConversationId) return;
+    if (!authUser?.uid || !selectedUser?.uid || !selectedConversationId) return;
     try {
-      const conversationRef = doc(db, "conversations", selectedConversationId);
-      const signalsRef      = collection(conversationRef, "signals");
-      await addDoc(signalsRef, {
+      await addConversationSignal(selectedConversationId, {
         ...payload,
-        from:      authUser.uid,
-        to:        selectedUser.uid,
-        createdAt: serverTimestamp(),
+        from: authUser.uid,
+        to: selectedUser.uid,
       });
       if (onSendCallSignal) onSendCallSignal(payload);
     } catch (e) {
@@ -515,7 +482,7 @@ const ChatWindow = ({
         to:        selectedUser.uid,
         type,
         status:    "ringing",
-        startedAt: serverTimestamp(),
+        startedAt: new Date().toISOString(),
       });
 
       setStatusText(`Calling ${selectedUser.displayName}…`);
@@ -574,7 +541,7 @@ const ChatWindow = ({
       direction:  currentCall?.from === authUser?.uid ? "outgoing" : "incoming",
       status:     callStatus,
       startedAt:  currentCall?.startedAt || null,
-      endedAt:    serverTimestamp(),
+      endedAt:    new Date().toISOString(),
       duration:   callDurationSec,
       callerId:   currentCall?.from || authUser?.uid,
       receiverId: currentCall?.to || selectedUser?.uid,
@@ -611,44 +578,18 @@ const ChatWindow = ({
     if (!file) throw new Error("File missing.");
     if (file.size > MAX_FILE_SIZE_BYTES) throw new Error("File too large. Max 15 MB.");
 
-    const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        uploadTask.cancel();
-        setUploadProgress(0);
-        reject(new Error("Upload timed out. Check Firebase Storage bucket/rules and try again."));
-      }, 45000);
-
-      uploadTask.on(
-        "state_changed",
-        (s) => setUploadProgress(Math.round((s.bytesTransferred / s.totalBytes) * 100)),
-        async (err) => {
-          clearTimeout(timeoutId);
-          try { await deleteObject(storageRef); } catch {}
-          setUploadProgress(0);
-          reject(err);
-        },
-        async () => {
-          clearTimeout(timeoutId);
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          setUploadProgress(0);
-          resolve(url);
-        }
-      );
-    });
+    setUploadProgress(20);
+    const folder = (path || "attachments").split("/")[0] || "attachments";
+    const { url } = await uploadMedia({ uid: authUser?.uid || "unknown", folder, file });
+    setUploadProgress(100);
+    setTimeout(() => setUploadProgress(0), 150);
+    return url;
   };
 
   const updateTypingState = async (isTyping) => {
-    if (!db || !authUser?.uid || !selectedUser?.uid || activeThreadType !== "direct") return;
-    if (!selectedConversationId) return;
+    if (!authUser?.uid || !selectedUser?.uid || activeThreadType !== "direct" || !selectedConversationId) return;
     try {
-      await setDoc(
-        doc(db, "conversations", selectedConversationId),
-        { typing: { [authUser.uid]: isTyping } },
-        { merge: true }
-      );
+      await updateConversationMeta(selectedConversationId, { typing: { [authUser.uid]: isTyping } });
     } catch {}
   };
 
@@ -906,36 +847,24 @@ const ChatWindow = ({
   };
 
   const setMute = async () => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
-    await setDoc(
-      doc(db, "conversations", selectedConversationId),
-      { mutedBy: { [authUser.uid]: !selectedMuted } },
-      { merge: true }
-    ).catch(console.error);
+    if (!authUser?.uid || !selectedConversationId) return;
+    await updateConversationMeta(selectedConversationId, {
+      mutedBy: { [authUser.uid]: !selectedMuted },
+    }).catch(console.error);
   };
 
   const setTheme = async (theme) => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
-    await setDoc(
-      doc(db, "conversations", selectedConversationId),
-      { themeBy: { [authUser.uid]: theme } },
-      { merge: true }
-    ).catch(console.error);
+    if (!authUser?.uid || !selectedConversationId) return;
+    await updateConversationMeta(selectedConversationId, {
+      themeBy: { [authUser.uid]: theme },
+    }).catch(console.error);
   };
 
   const deleteChatHistory = async () => {
-    if (!db || !authUser?.uid || !selectedConversationId) return;
+    if (!authUser?.uid || !selectedConversationId) return;
     if (!window.confirm("Clear this conversation's history?")) return;
     try {
-      const conversationRef = doc(db, "conversations", selectedConversationId);
-      const snapshot        = await getDocs(collection(conversationRef, "messages"));
-      const batch           = writeBatch(db);
-      snapshot.docs.forEach((e) => batch.update(e.ref, { deletedFor: arrayUnion(authUser.uid) }));
-      if (!snapshot.empty) await batch.commit();
-      await setDoc(conversationRef, {
-        clearedAtBy: { [authUser.uid]: serverTimestamp() },
-        unreadBy:    { [authUser.uid]: 0 },
-      }, { merge: true });
+      await clearConversationForUser(selectedConversationId, authUser.uid);
       setMessages([]);
       setStatusText("Conversation history cleared.");
       setTimeout(() => setStatusText(""), 3000);
@@ -957,7 +886,6 @@ const ChatWindow = ({
   // ── Guards ────────────────────────────────────────────────────────────────
   // ═════════════════════════════════════════════════════════════════════════
 
-  if (!db)           return null;
   if (!activeThread) return null;
 
   // ═════════════════════════════════════════════════════════════════════════

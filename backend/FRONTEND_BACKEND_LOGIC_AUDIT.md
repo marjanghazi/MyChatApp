@@ -2,15 +2,20 @@
 
 ## Current status
 - Frontend runtime does not directly use Firebase SDK modules.
-- Core message mutations use backend chat endpoints (`/api/chat/messages/*`).
-- Message/call-log/signal reads are now polled via backend chat endpoints.
-- Backend enforces document/storage allow-lists for proxied operations.
+- `ChatWindow` read/write flows use backend chat/media APIs (`/api/chat/*`, `/api/media/*`).
+- Backend enforces document/storage allow-lists for any compatibility paths still exposed.
 
 ## Backend controls added
 - Firestore doc/collection path allow-lists in `dbController`.
 - Storage path allow-lists in `mediaController` for upload/delete operations.
-- Chat domain handlers in `chatController` for send/edit/delete/flag and read APIs.
+- Chat domain handlers in `chatController` for:
+  - message mutations,
+  - thread/call-log/signal reads,
+  - signal deletion,
+  - conversation seen/meta updates,
+  - conversation call-log/message append,
+  - conversation clear-for-user.
 
 ## Remaining architecture note
-Call-state and signaling writes, theme/mute toggles, and some conversation-level operations are still executed through the compatibility data layer from frontend.
-For strict domain-driven backend ownership, those remaining write flows should be moved into dedicated backend chat/call controllers.
+- `firebaseCompat` still exists for legacy compatibility references (`firebase.js` export + test mocks), but `ChatWindow` no longer depends on it.
+- For strict backend-only ownership, next cleanup is removing legacy compatibility exports/tests and replacing any remaining non-chat frontend data paths with domain endpoints.
