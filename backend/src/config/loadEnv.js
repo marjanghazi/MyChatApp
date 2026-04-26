@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 const envPaths = [
   path.resolve(__dirname, "../../.env"),
   path.resolve(__dirname, "../../../.env"),
-  path.resolve(__dirname, "../../../pqc-chat-ui/.env"),
+  path.resolve(__dirname, "../../../frontend/.env"),
 ];
 
 const stripWrappingQuotes = (value) => {

@@ -2,7 +2,7 @@
 
 Repository structure:
 
-- `pqc-chat-ui/` — frontend-only React application (UI + API calls).
+- `frontend/` — frontend-only React application (UI + API calls).
 - `backend/` — single backend source (API, rules/indexes, server-side business logic).
 
 ## Goal Architecture

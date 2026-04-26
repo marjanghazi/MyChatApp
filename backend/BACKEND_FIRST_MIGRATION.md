@@ -3,7 +3,7 @@
 This checklist defines all changes required so **backend/** is the single source of backend logic and frontend clients only use APIs.
 
 ## Definition of done
-- No `firebase/*` imports in `pqc-chat-ui/src` except optional analytics-only helpers.
+- No `firebase/*` imports in `frontend/src` except optional analytics-only helpers.
 - No direct Firestore/Auth/Storage reads/writes in frontend code.
 - Web and mobile both call `backend/` HTTP APIs for all operations.
 - Security rules/indexes and all server-side business logic live in `backend/`.
@@ -73,8 +73,8 @@ Notes:
 ## Frontend required changes
 
 1. Replace direct Firebase imports in:
-   - `pqc-chat-ui/src/App.js`
-   - `pqc-chat-ui/src/components/chatwindow/ChatWindow.jsx`
+   - `frontend/src/App.js`
+   - `frontend/src/components/chatwindow/ChatWindow.jsx`
 2. Split frontend data layer into services:
    - `authService`
    - `userService`

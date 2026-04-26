@@ -72,10 +72,10 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
 ## PQC Chat troubleshooting
 
 ### "Module not found" for `./services/*`
-If your console shows paths like `/root/PQCChatApp/pqc-chat-ui/src/...` but your code was moved elsewhere, you are likely running `npm start` from an older checkout. Start the UI from this repo path instead:
+If your console shows paths like `/root/PQCChatApp/frontend/src/...` but your code was moved elsewhere, you are likely running `npm start` from an older checkout. Start the UI from this repo path instead:
 
 ```bash
-cd /workspace/MyChatApp/pqc-chat-ui
+cd /workspace/MyChatApp/frontend
 npm install
 npm start
 ```
@@ -107,7 +107,7 @@ npm run dev
 ```
 2. Start frontend:
 ```bash
-cd /workspace/MyChatApp/pqc-chat-ui
+cd /workspace/MyChatApp/frontend
 npm install
 npm start
 ```

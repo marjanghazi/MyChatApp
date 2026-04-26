@@ -1,7 +1,7 @@
 # PQC Chat Backend
 
 This folder is the single backend source for both:
-- `pqc-chat-ui` (web frontend)
+- `frontend` (web frontend)
 - future mobile applications
 
 ## Contents
@@ -54,7 +54,7 @@ FIREBASE_WEB_API_KEY=<firebaseConfig.apiKey from Firebase console>
 - `GET /api/thread/channels`
 
 ## Frontend integration
-In `pqc-chat-ui/.env` set:
+In `frontend/.env` set:
 ```bash
 REACT_APP_API_BASE_URL=http://localhost:4000
 ```
