@@ -28,6 +28,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 4000 --reload
 # quick sanity checks
 curl http://127.0.0.1:4000/
 curl http://127.0.0.1:4000/api/health
+
+# verify API surface parity with JS backend
+python3 scripts/compare_api_surface.py
 ```
 
 ## API endpoints

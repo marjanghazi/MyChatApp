@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import cors_origins, load_env
 from app.firebase_client import init_firebase
@@ -28,11 +30,10 @@ app.add_middleware(
 )
 
 
-
-
 @app.get('/')
 def root():
     return {'ok': True, 'service': 'pqc-chat-backend', 'health': '/api/health', 'docs': '/docs'}
+
 
 @app.get('/api/health')
 def health():
@@ -47,8 +48,19 @@ app.include_router(media_router)
 app.include_router(chat_router)
 
 
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(_request: Request, exc: StarletteHTTPException):
+    message = 'Not Found' if exc.status_code == 404 else str(exc.detail)
+    return JSONResponse(status_code=exc.status_code, content={'message': message})
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(_request: Request, exc: RequestValidationError):
+    first = exc.errors()[0] if exc.errors() else {}
+    message = first.get('msg') or 'Validation error'
+    return JSONResponse(status_code=422, content={'message': message})
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(_request: Request, exc: Exception):
-    if hasattr(exc, 'status_code') and hasattr(exc, 'detail'):
-        return JSONResponse(status_code=exc.status_code, content={'message': str(exc.detail)})
     return JSONResponse(status_code=500, content={'message': str(exc) or 'Internal Server Error'})
