@@ -28,6 +28,12 @@ app.add_middleware(
 )
 
 
+
+
+@app.get('/')
+def root():
+    return {'ok': True, 'service': 'pqc-chat-backend', 'health': '/api/health', 'docs': '/docs'}
+
 @app.get('/api/health')
 def health():
     return {'ok': True, 'service': 'pqc-chat-backend'}

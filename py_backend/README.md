@@ -16,6 +16,7 @@ Independent FastAPI backend that mirrors the existing `backend/` API contract.
 - `.env.example` — env template
 
 ## Setup
+Use Python 3.11+ recommended (3.10 works but has upcoming Google SDK support EOL warnings).
 ```bash
 cd py_backend
 python3 -m venv .venv
@@ -23,6 +24,10 @@ source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 uvicorn app.main:app --host 0.0.0.0 --port 4000 --reload
+
+# quick sanity checks
+curl http://127.0.0.1:4000/
+curl http://127.0.0.1:4000/api/health
 ```
 
 ## API endpoints
