@@ -1,14 +1,15 @@
 # Frontend Backend-Logic Audit
 
 ## Current status
-Frontend runtime no longer imports Firebase client SDK modules directly.
-All data and storage mutations are routed through backend APIs (`/api/db/*`, `/api/media/*`).
+- Frontend runtime does not directly use Firebase SDK modules.
+- Frontend data/storage operations are routed through backend API endpoints.
+- Backend now enforces path allow-lists for document and storage operations.
 
-## What changed
-- Added backend document API endpoints for Firestore document/collection operations.
-- Added backend media endpoints for upload/delete by explicit storage path.
-- Replaced `ChatWindow.jsx` Firebase SDK imports with `firebaseCompat` service calls.
-- Replaced frontend `firebase.js` with compatibility re-export (no Firebase SDK initialization).
+## Backend controls added
+- Firestore doc/collection path allow-lists in `dbController`.
+- Batch operation path validation in `dbController`.
+- Storage path allow-lists in `mediaController` for upload/delete operations.
 
-## Notes
-- `firebaseCompat` implements polling-based `onSnapshot` behavior in the frontend to preserve UI behavior while keeping Firebase access in the backend.
+## Remaining architecture note
+The frontend still contains chat orchestration logic in `ChatWindow.jsx`.
+For strict domain-driven backend ownership, this logic should be moved into explicit chat/message/call controllers.

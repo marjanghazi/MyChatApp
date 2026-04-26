@@ -3,6 +3,46 @@ import { getFirestore } from "../config/firebaseAdmin.js";
 
 const db = getFirestore();
 
+const DOC_PATH_RULES = [
+  /^conversations\/[^/]+$/,
+  /^conversations\/[^/]+\/messages\/[^/]+$/,
+  /^conversations\/[^/]+\/callLogs\/[^/]+$/,
+  /^conversations\/[^/]+\/signals\/[^/]+$/,
+  /^groups\/[^/]+$/,
+  /^groups\/[^/]+\/messages\/[^/]+$/,
+  /^channels\/[^/]+$/,
+  /^channels\/[^/]+\/posts\/[^/]+$/,
+  /^users\/[^/]+$/,
+];
+
+const COLLECTION_PATH_RULES = [
+  /^conversations$/,
+  /^conversations\/[^/]+\/messages$/,
+  /^conversations\/[^/]+\/callLogs$/,
+  /^conversations\/[^/]+\/signals$/,
+  /^groups$/,
+  /^groups\/[^/]+\/messages$/,
+  /^channels$/,
+  /^channels\/[^/]+\/posts$/,
+  /^users$/,
+];
+
+const assertAllowedDocPath = (path) => {
+  if (!DOC_PATH_RULES.some((rule) => rule.test(path))) {
+    const error = new Error(`doc path not allowed: ${path}`);
+    error.statusCode = 403;
+    throw error;
+  }
+};
+
+const assertAllowedCollectionPath = (path) => {
+  if (!COLLECTION_PATH_RULES.some((rule) => rule.test(path))) {
+    const error = new Error(`collection path not allowed: ${path}`);
+    error.statusCode = 403;
+    throw error;
+  }
+};
+
 const must = (value, name) => {
   if (!value || (typeof value === "string" && !value.trim())) {
     const error = new Error(`${name} is required`);
@@ -39,6 +79,7 @@ export const setDocByPath = async (req, res, next) => {
   try {
     const { path, data, merge = false } = req.body;
     must(path, "path");
+    assertAllowedDocPath(path);
     await db.doc(path).set(toDocPayload(data), { merge: Boolean(merge) });
     res.json({ ok: true });
   } catch (error) {
@@ -50,6 +91,7 @@ export const updateDocByPath = async (req, res, next) => {
   try {
     const { path, data } = req.body;
     must(path, "path");
+    assertAllowedDocPath(path);
     await db.doc(path).update(toDocPayload(data));
     res.json({ ok: true });
   } catch (error) {
@@ -61,6 +103,7 @@ export const addDocByPath = async (req, res, next) => {
   try {
     const { path, data } = req.body;
     must(path, "path");
+    assertAllowedCollectionPath(path);
     const ref = await db.collection(path).add(toDocPayload(data));
     res.json({ ok: true, id: ref.id, path: ref.path });
   } catch (error) {
@@ -72,6 +115,7 @@ export const deleteDocByPath = async (req, res, next) => {
   try {
     const { path } = req.body;
     must(path, "path");
+    assertAllowedDocPath(path);
     await db.doc(path).delete();
     res.json({ ok: true });
   } catch (error) {
@@ -83,6 +127,7 @@ export const getDocsByPath = async (req, res, next) => {
   try {
     const { path, where = [], orderBy = [] } = req.body;
     must(path, "path");
+    assertAllowedCollectionPath(path);
 
     let queryRef = db.collection(path);
     where.forEach((clause) => {
@@ -112,6 +157,7 @@ export const commitBatchByPath = async (req, res, next) => {
 
     operations.forEach((operation) => {
       if (!operation?.type || !operation?.path) return;
+      assertAllowedDocPath(operation.path);
       if (operation.type === "update") {
         batch.update(db.doc(operation.path), toDocPayload(operation.data));
       }
