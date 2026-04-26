@@ -44,6 +44,13 @@ import ChatToolbar from "./ChatToolbar";
 import ChatCallPanels from "./ChatCallPanels";
 import ChatMessages from "./ChatMessages";
 import ChatComposer from "./ChatComposer";
+import {
+  deleteChatMessageForEveryone,
+  deleteChatMessageForMe,
+  editChatMessage,
+  sendChatMessage,
+  toggleChatMessageFlag,
+} from "../../services/chatService";
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -656,39 +663,31 @@ const ChatWindow = ({
     return "file";
   };
 
-  // FIX: setDoc always uses { merge: true } to avoid nuking themes/mute settings.
+  // Backend domain endpoint handles persistence logic for direct/group/channel sends.
   const sendMessage = async ({ text = "", file = null, forwardedFrom = null } = {}) => {
-    if (!db || !authUser?.uid || !profile) {
+    if (!authUser?.uid || !profile) {
       setStatusText("Database connection error");
       return false;
     }
     if (!text.trim() && !file) return false;
 
-    // ── Group ──
     if (activeThreadType === "group" && selectedGroup) {
       try {
-        const groupRef = doc(db, "groups", selectedGroup.id);
-        const payload = {
-          text:       text.trim(),
-          type:       "text",
-          senderId:   authUser.uid,
-          senderName: profile.displayName,
-          createdAt:  serverTimestamp(),
-        };
-        if (replyTo) {
-          payload.replyTo = {
-            id: replyTo.id,
-            text: replyTo.text,
-            senderId: replyTo.senderId,
-            senderName: replyTo.senderName || usersById.get(replyTo.senderId)?.displayName || "Member",
-          };
-        }
-        await addDoc(collection(groupRef, "messages"), payload);
-        await setDoc(groupRef, {
-          lastMessage:   text.trim(),
-          lastMessageAt: serverTimestamp(),
-          updatedAt:     serverTimestamp(),
-        }, { merge: true });
+        await sendChatMessage({
+          threadType: "group",
+          threadId: selectedGroup.id,
+          actorUid: authUser.uid,
+          actorName: profile.displayName,
+          payload: { text: text.trim(), type: "text" },
+          replyTo: replyTo
+            ? {
+                id: replyTo.id,
+                text: replyTo.text,
+                senderId: replyTo.senderId,
+                senderName: replyTo.senderName || usersById.get(replyTo.senderId)?.displayName || "Member",
+              }
+            : null,
+        });
         setMessageInput("");
         setReplyTo(null);
         setReplyTargetUser(null);
@@ -699,26 +698,19 @@ const ChatWindow = ({
       return true;
     }
 
-    // ── Channel ──
     if (activeThreadType === "channel" && selectedChannel) {
       if (selectedChannel.ownerId !== authUser.uid) {
         setStatusText("Only channel owner can publish posts.");
         return false;
       }
       try {
-        const channelRef = doc(db, "channels", selectedChannel.id);
-        await addDoc(collection(channelRef, "posts"), {
-          text:       text.trim(),
-          type:       "post",
-          senderId:   authUser.uid,
-          senderName: profile.displayName,
-          createdAt:  serverTimestamp(),
+        await sendChatMessage({
+          threadType: "channel",
+          threadId: selectedChannel.id,
+          actorUid: authUser.uid,
+          actorName: profile.displayName,
+          payload: { text: text.trim(), type: "post" },
         });
-        await setDoc(channelRef, {
-          lastPost:   text.trim(),
-          lastPostAt: serverTimestamp(),
-          updatedAt:  serverTimestamp(),
-        }, { merge: true });
         setMessageInput("");
         setReplyTo(null);
         setReplyTargetUser(null);
@@ -731,7 +723,6 @@ const ChatWindow = ({
       return true;
     }
 
-    // ── Direct ──
     if (activeThreadType === "direct") {
       if (!selectedUser?.uid || !selectedConversationId) {
         setStatusText("No conversation selected.");
@@ -739,17 +730,13 @@ const ChatWindow = ({
       }
 
       let payload = { type: "text", text: text.trim() };
-
       if (file) {
         setSendingAttachment(true);
         try {
-          const fileURL = await uploadToStorage(
-            `attachments/${selectedConversationId}`,
-            file
-          );
+          const fileURL = await uploadToStorage(`attachments/${selectedConversationId}`, file);
           payload = {
-            type:     inferMessageTypeFromFile(file),
-            text:     text.trim() || file.name,
+            type: inferMessageTypeFromFile(file),
+            text: text.trim() || file.name,
             fileURL,
             fileName: file.name,
             fileSize: file.size,
@@ -765,38 +752,23 @@ const ChatWindow = ({
       }
 
       if (forwardedFrom) payload.forwardedFrom = forwardedFrom;
-      if (replyTo) {
-        payload.replyTo = { id: replyTo.id, text: replyTo.text, senderId: replyTo.senderId };
-        setReplyTo(null);
-        setReplyTargetUser(null);
-      }
+      const replyPayload = replyTo ? { id: replyTo.id, text: replyTo.text, senderId: replyTo.senderId } : null;
 
       try {
-        const conversationRef = doc(db, "conversations", selectedConversationId);
-        // FIX: merge:true — never overwrite themes, mute settings, etc.
-        await setDoc(conversationRef, {
-          participants:        [authUser.uid, selectedUser.uid],
-          participantPhones:   [profile.phoneNumber || "", selectedUser.phoneNumber || ""],
-          lastMessage:         payload.type === "text" ? payload.text : `${payload.type === "audio" ? "🎤" : payload.type === "video" ? "🎬" : "📎"} ${payload.fileName}`,
-          lastMessageType:     payload.type,
-          lastMessageSender:   authUser.uid,
-          lastMessageStatus:   selectedUser?.isOnline ? "delivered" : "sent",
-          lastMessageAt:       serverTimestamp(),
-          typing:              { [authUser.uid]: false },
-          unreadBy:            { [authUser.uid]: 0, [selectedUser.uid]: increment(1) },
-          createdAt:           serverTimestamp(),
-          updatedAt:           serverTimestamp(),
-        }, { merge: true });
-
-        await addDoc(collection(conversationRef, "messages"), {
-          ...payload,
-          senderId:   authUser.uid,
-          receiverId: selectedUser.uid,
-          createdAt:  serverTimestamp(),
-          deliveredTo: [authUser.uid, ...(selectedUser?.isOnline ? [selectedUser.uid] : [])],
-          readBy:     [authUser.uid],
+        await sendChatMessage({
+          threadType: "direct",
+          threadId: selectedConversationId,
+          actorUid: authUser.uid,
+          actorName: profile.displayName,
+          actorPhone: profile.phoneNumber || "",
+          targetUid: selectedUser.uid,
+          targetPhone: selectedUser.phoneNumber || "",
+          isTargetOnline: Boolean(selectedUser?.isOnline),
+          payload,
+          replyTo: replyPayload,
         });
-
+        setReplyTo(null);
+        setReplyTargetUser(null);
         setMessageInput("");
         updateTypingState(false);
         setEditingMessageId(null);
@@ -815,28 +787,16 @@ const ChatWindow = ({
   const sendDirectMessageToUser = async ({ targetUser, payload }) => {
     if (!authUser || !profile || !targetUser || !payload) return;
     const conversationId = conversationIdFor(authUser.uid, targetUser.uid);
-    const conversationRef = doc(db, "conversations", conversationId);
-    await setDoc(
-      conversationRef,
-      {
-        participants: [authUser.uid, targetUser.uid],
-        participantPhones: [profile.phoneNumber || "", targetUser.phoneNumber || ""],
-        lastMessage: payload.type === "text" ? payload.text : `${payload.type === "audio" ? "🎤" : payload.type === "video" ? "🎬" : "📎"} ${payload.fileName || "attachment"}`,
-        lastMessageType: payload.type,
-        lastMessageSender: authUser.uid,
-        lastMessageStatus: targetUser?.isOnline ? "delivered" : "sent",
-        lastMessageAt: serverTimestamp(),
-        unreadBy: { [authUser.uid]: 0, [targetUser.uid]: increment(1) },
-      },
-      { merge: true }
-    );
-    await addDoc(collection(db, "conversations", conversationId, "messages"), {
-      ...payload,
-      senderId: authUser.uid,
-      receiverId: targetUser.uid,
-      createdAt: serverTimestamp(),
-      deliveredTo: [authUser.uid, ...(targetUser?.isOnline ? [targetUser.uid] : [])],
-      readBy: [authUser.uid],
+    await sendChatMessage({
+      threadType: "direct",
+      threadId: conversationId,
+      actorUid: authUser.uid,
+      actorName: profile.displayName,
+      actorPhone: profile.phoneNumber || "",
+      targetUid: targetUser.uid,
+      targetPhone: targetUser.phoneNumber || "",
+      isTargetOnline: Boolean(targetUser?.isOnline),
+      payload,
     });
   };
 
@@ -865,16 +825,10 @@ const ChatWindow = ({
     const newText = messageInput.trim();
     if (!newText) return;
     if (activeThreadType === "direct" && selectedConversationId) {
-      await updateDoc(doc(db, "conversations", selectedConversationId, "messages", msg.id), {
-        text: newText,
-        editedAt: serverTimestamp(),
-      });
+      await editChatMessage({ threadType: "direct", threadId: selectedConversationId, messageId: msg.id, text: newText });
     }
     if (activeThreadType === "group" && selectedGroup) {
-      await updateDoc(doc(db, "groups", selectedGroup.id, "messages", msg.id), {
-        text: newText,
-        editedAt: serverTimestamp(),
-      });
+      await editChatMessage({ threadType: "group", threadId: selectedGroup.id, messageId: msg.id, text: newText });
     }
     setMessageInput("");
     setEditingMessageId(null);
@@ -884,44 +838,45 @@ const ChatWindow = ({
   const deleteForMe = async (msg) => {
     if (!authUser) return;
     if (activeThreadType === "direct" && selectedConversationId) {
-      await updateDoc(doc(db, "conversations", selectedConversationId, "messages", msg.id), {
-        deletedFor: arrayUnion(authUser.uid),
-      });
+      await deleteChatMessageForMe({ threadType: "direct", threadId: selectedConversationId, messageId: msg.id, actorUid: authUser.uid });
     }
     if (activeThreadType === "group" && selectedGroup) {
-      await updateDoc(doc(db, "groups", selectedGroup.id, "messages", msg.id), {
-        deletedFor: arrayUnion(authUser.uid),
-      });
+      await deleteChatMessageForMe({ threadType: "group", threadId: selectedGroup.id, messageId: msg.id, actorUid: authUser.uid });
     }
   };
 
   const deleteForEveryone = async (msg) => {
     if (!authUser || msg.senderId !== authUser.uid) return;
-    const deletionPayload = {
-      text: "🚫 This message was deleted.",
-      deletedForEveryone: true,
-      deletedAt: serverTimestamp(),
-      fileURL: null,
-      fileName: null,
-      fileSize: null,
-    };
     if (activeThreadType === "direct" && selectedConversationId) {
-      await updateDoc(doc(db, "conversations", selectedConversationId, "messages", msg.id), deletionPayload);
+      await deleteChatMessageForEveryone({ threadType: "direct", threadId: selectedConversationId, messageId: msg.id });
     }
     if (activeThreadType === "group" && selectedGroup) {
-      await updateDoc(doc(db, "groups", selectedGroup.id, "messages", msg.id), deletionPayload);
+      await deleteChatMessageForEveryone({ threadType: "group", threadId: selectedGroup.id, messageId: msg.id });
     }
   };
 
   const toggleMessageFlag = async (msg, key) => {
     if (!authUser) return;
     const alreadyFlagged = (msg[key] || []).includes(authUser.uid);
-    const payload = { [key]: alreadyFlagged ? arrayRemove(authUser.uid) : arrayUnion(authUser.uid) };
     if (activeThreadType === "direct" && selectedConversationId) {
-      await updateDoc(doc(db, "conversations", selectedConversationId, "messages", msg.id), payload);
+      await toggleChatMessageFlag({
+        threadType: "direct",
+        threadId: selectedConversationId,
+        messageId: msg.id,
+        actorUid: authUser.uid,
+        key,
+        alreadyFlagged,
+      });
     }
     if (activeThreadType === "group" && selectedGroup) {
-      await updateDoc(doc(db, "groups", selectedGroup.id, "messages", msg.id), payload);
+      await toggleChatMessageFlag({
+        threadType: "group",
+        threadId: selectedGroup.id,
+        messageId: msg.id,
+        actorUid: authUser.uid,
+        key,
+        alreadyFlagged,
+      });
     }
   };
 
