@@ -68,3 +68,40 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+
+## PQC Chat troubleshooting
+
+### "Module not found" for `./services/*`
+If your console shows paths like `/root/PQCChatApp/pqc-chat-ui/src/...` but your code was moved elsewhere, you are likely running `npm start` from an older checkout. Start the UI from this repo path instead:
+
+```bash
+cd /workspace/MyChatApp/pqc-chat-ui
+npm install
+npm start
+```
+
+Also confirm these files exist in `src/services/`:
+- `apiClient.js`
+- `authService.js`
+- `userService.js`
+- `threadService.js`
+- `mediaService.js`
+- `communityService.js`
+
+### Login says "Failed to fetch"
+That indicates the frontend cannot reach backend API.
+
+1. Start backend:
+```bash
+cd /workspace/MyChatApp/backend
+npm install
+npm run dev
+```
+2. Ensure frontend has API URL in `.env`:
+```env
+REACT_APP_API_BASE_URL=http://localhost:4000
+```
+3. Ensure backend `.env` contains frontend origin:
+```env
+CORS_ORIGINS=http://localhost:3000
+```
