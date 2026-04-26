@@ -10,6 +10,7 @@ This folder is the single backend source for both:
   - `firestore.indexes.json`
   - `storage.rules`
 - `.env.example` — environment variable template
+- `BACKEND_FIRST_MIGRATION.md` — complete checklist to finish backend-first architecture
 
 ## Setup
 ```bash
@@ -32,5 +33,5 @@ In `pqc-chat-ui/.env` set:
 REACT_APP_API_BASE_URL=http://localhost:4000
 ```
 
-## What remains to make backend fully authoritative
-To make backend handle all business logic, migrate all remaining frontend direct Firebase reads/writes to backend endpoints (conversations, messages, calls, user profile/search, uploads).
+## Next steps
+Follow `BACKEND_FIRST_MIGRATION.md` to migrate all remaining frontend direct Firebase usage into backend APIs.
