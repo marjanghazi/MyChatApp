@@ -11,6 +11,7 @@ This folder is the single backend source for both:
   - `storage.rules`
 - `.env.example` — environment variable template
 - `BACKEND_FIRST_MIGRATION.md` — complete checklist to finish backend-first architecture
+- `FRONTEND_BACKEND_LOGIC_AUDIT.md` — exact audit of remaining frontend backend-logic usage
 
 ## Setup
 ```bash
@@ -34,4 +35,4 @@ REACT_APP_API_BASE_URL=http://localhost:4000
 ```
 
 ## Next steps
-Follow `BACKEND_FIRST_MIGRATION.md` to migrate all remaining frontend direct Firebase usage into backend APIs.
+Follow `BACKEND_FIRST_MIGRATION.md` and `FRONTEND_BACKEND_LOGIC_AUDIT.md` to migrate all remaining frontend direct Firebase usage into backend APIs.
