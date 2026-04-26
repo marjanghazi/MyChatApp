@@ -91,17 +91,29 @@ Also confirm these files exist in `src/services/`:
 ### Login says "Failed to fetch"
 That indicates the frontend cannot reach backend API.
 
+Use one terminal from repo root to run both apps:
+```bash
+cd /workspace/MyChatApp
+npm install
+npm run dev
+```
+
+If you run apps separately:
 1. Start backend:
 ```bash
 cd /workspace/MyChatApp/backend
 npm install
 npm run dev
 ```
-2. Ensure frontend has API URL in `.env`:
-```env
-REACT_APP_API_BASE_URL=http://localhost:4000
+2. Start frontend:
+```bash
+cd /workspace/MyChatApp/pqc-chat-ui
+npm install
+npm start
 ```
-3. Ensure backend `.env` contains frontend origin:
+3. By default the frontend now uses CRA dev proxy (`/api` -> `http://localhost:4000`).
+4. Only set `REACT_APP_API_BASE_URL` when you need a non-default backend URL.
+5. Ensure backend `.env` contains frontend origin if you use explicit cross-origin URL:
 ```env
 CORS_ORIGINS=http://localhost:3000
 ```
