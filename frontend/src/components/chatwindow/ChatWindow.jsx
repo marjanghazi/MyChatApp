@@ -53,6 +53,7 @@ const ChatWindow = ({
   contacts,
   onUpdateConversation,   // ({ type, channel }) => void  — used for channel follow toggle
   onOpenGroupDetails,
+  onOpenMobileSidebar,
   onLeaveGroup,
   onUpdateCallState,      // optional parent notification
   onSendCallSignal,       // optional parent notification
@@ -1049,6 +1050,7 @@ const ChatWindow = ({
         toggleFollowChannel={toggleFollowChannel}
         authUser={authUser}
         onOpenGroupDetails={onOpenGroupDetails}
+        onOpenMobileSidebar={onOpenMobileSidebar}
         themes={THEMES}
       />
 

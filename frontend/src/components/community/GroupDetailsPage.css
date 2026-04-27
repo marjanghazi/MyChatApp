@@ -53,3 +53,31 @@
 .qx-group-details-footer {
   margin-top: 20px;
 }
+
+
+@media (max-width: 768px) {
+  .qx-group-details-page {
+    padding: 16px;
+  }
+
+  .qx-group-details-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .qx-group-details-actions {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .qx-group-details-page {
+    padding: 12px;
+  }
+
+  .qx-group-details-actions > * {
+    width: 100%;
+  }
+}

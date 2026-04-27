@@ -19,9 +19,11 @@ const ChatHeader = ({
   toggleFollowChannel,
   authUser,
   onOpenGroupDetails,
+  onOpenMobileSidebar,
 }) => (
   <>
     <header className="qx-chat-header">
+      <button type="button" className="qx-mobile-back" onClick={onOpenMobileSidebar} aria-label="Open conversations">☰</button>
       <button
         type="button"
         className={`qx-chat-contact-trigger ${activeThreadType === "group" ? "qx-chat-contact-trigger--active" : ""}`}

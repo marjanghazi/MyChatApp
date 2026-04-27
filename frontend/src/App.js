@@ -749,6 +749,7 @@ function App() {
           contacts={contacts}
           onOpenGroupDetails={() => setShowGroupDetails(true)}
           onLeaveGroup={leaveSelectedGroup}
+          onOpenMobileSidebar={() => setShowMobileSidebar(true)}
           // FIX: was missing — channel follow toggle inside ChatWindow header now works
           onUpdateConversation={({ type, channel }) => {
             if (type === "toggleFollow") toggleFollowChannel(channel);
