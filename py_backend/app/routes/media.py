@@ -18,6 +18,8 @@ STORAGE_PATH_RULES = [
     re.compile(r'^direct/[A-Za-z0-9_-]+/.+$'),
     re.compile(r'^group/[A-Za-z0-9_-]+/.+$'),
     re.compile(r'^channel/[A-Za-z0-9_-]+/.+$'),
+    re.compile(r'^group-attachments/[A-Za-z0-9_-]+/.+$'),
+    re.compile(r'^channel-attachments/[A-Za-z0-9_-]+/.+$'),
 ]
 
 

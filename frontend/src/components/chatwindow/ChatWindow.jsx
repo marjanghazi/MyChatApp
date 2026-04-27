@@ -679,7 +679,7 @@ const ChatWindow = ({
         if (file) {
           setSendingAttachment(true);
           try {
-            const fileURL = await uploadToStorage(`group-attachments/${selectedGroup.id}`, file);
+            const fileURL = await uploadToStorage(`group/${selectedGroup.id}`, file);
             payload = {
               type: inferMessageTypeFromFile(file),
               text: text.trim() || file.name,
@@ -747,7 +747,7 @@ const ChatWindow = ({
         if (file) {
           setSendingAttachment(true);
           try {
-            const fileURL = await uploadToStorage(`channel-attachments/${selectedChannel.id}`, file);
+            const fileURL = await uploadToStorage(`channel/${selectedChannel.id}`, file);
             payload = {
               type: inferMessageTypeFromFile(file),
               text: text.trim() || file.name,
