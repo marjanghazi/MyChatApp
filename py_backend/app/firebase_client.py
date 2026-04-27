@@ -4,12 +4,35 @@ import os
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 
+
+def _normalize_bucket_name(raw: str) -> str:
+    value = (raw or '').strip()
+    if not value:
+        return ''
+    if value.startswith('gs://'):
+        value = value[5:]
+    if value.endswith('/'):
+        value = value[:-1]
+    if value.endswith('.firebasestorage.app'):
+        project = value.removesuffix('.firebasestorage.app')
+        if project:
+            return f'{project}.appspot.com'
+    return value
+
+
 def resolve_storage_bucket_name() -> str:
-    return (
+    explicit = (
         os.getenv('FIREBASE_STORAGE_BUCKET')
         or os.getenv('REACT_APP_FIREBASE_STORAGE_BUCKET')
         or ''
-    ).strip()
+    )
+    normalized = _normalize_bucket_name(explicit)
+    if normalized:
+        return normalized
+    project_id = (os.getenv('FIREBASE_PROJECT_ID') or os.getenv('REACT_APP_FIREBASE_PROJECT_ID') or '').strip()
+    if project_id:
+        return f'{project_id}.appspot.com'
+    return ''
 
 
 def init_firebase() -> None:

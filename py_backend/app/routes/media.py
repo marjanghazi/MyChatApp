@@ -51,7 +51,12 @@ def upload(body: dict):
     file_path = f'{folder}/{uid}/{safe_name}'
     assert_allowed(file_path)
 
-    blob = storage_bucket().blob(file_path)
+    try:
+        bucket = storage_bucket()
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=f'Firebase Storage misconfigured: {exc}') from exc
+
+    blob = bucket.blob(file_path)
     blob.upload_from_string(base64.b64decode(data_base64), content_type=content_type)
     return {'ok': True, 'url': signed_url(file_path), 'path': file_path}
 
@@ -67,7 +72,12 @@ def upload_by_path(body: dict):
     must(data_base64, 'dataBase64')
     assert_allowed(storage_path)
 
-    blob = storage_bucket().blob(storage_path)
+    try:
+        bucket = storage_bucket()
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=f'Firebase Storage misconfigured: {exc}') from exc
+
+    blob = bucket.blob(storage_path)
     blob.upload_from_string(base64.b64decode(data_base64), content_type=content_type)
     return {'ok': True, 'url': signed_url(storage_path), 'path': storage_path}
 
@@ -78,7 +88,12 @@ def delete_by_path(body: dict):
     must(storage_path, 'storagePath')
     assert_allowed(storage_path)
 
-    blob = storage_bucket().blob(storage_path)
+    try:
+        bucket = storage_bucket()
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=f'Firebase Storage misconfigured: {exc}') from exc
+
+    blob = bucket.blob(storage_path)
     if blob.exists():
         blob.delete()
     return {'ok': True}
