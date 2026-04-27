@@ -1186,3 +1186,63 @@
     transform: translateX(0);
   }
 }
+
+
+@media (max-width: 768px) {
+  .qx-chat-contact-trigger {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .qx-chat-contact-meta {
+    min-width: 0;
+  }
+
+  .qx-chat-contact-meta h3,
+  .qx-offline-label,
+  .qx-online-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .qx-call-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .qx-call-controls {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .qx-call-logs-panel {
+    width: min(100%, 360px);
+  }
+}
+
+@media (max-width: 480px) {
+  .qx-chat-header {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .qx-chat-toolbar,
+  .qx-call-banner,
+  .qx-call-media,
+  .qx-messages,
+  .qx-composer {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .qx-call-logs-panel {
+    width: 100%;
+  }
+
+  .qx-status-toast {
+    width: calc(100% - 24px);
+    white-space: normal;
+    text-align: center;
+  }
+}
