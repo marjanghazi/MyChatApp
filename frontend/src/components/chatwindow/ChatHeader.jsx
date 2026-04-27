@@ -28,8 +28,19 @@ const ChatHeader = ({
         onClick={() => activeThreadType === "group" && onOpenGroupDetails?.()}
       >
       <div className="qx-chat-contact-avatar">
-        {activeThreadType === "direct" && selectedUser?.photoURL
-          ? <img src={selectedUser.photoURL} alt={selectedUser.displayName} />
+        {(activeThreadType === "direct" && selectedUser?.photoURL) ||
+         (activeThreadType === "group" && selectedGroup?.photoURL) ||
+         (activeThreadType === "channel" && selectedChannel?.photoURL)
+          ? <img
+              src={
+                activeThreadType === "direct"
+                  ? selectedUser?.photoURL
+                  : activeThreadType === "group"
+                  ? selectedGroup?.photoURL
+                  : selectedChannel?.photoURL
+              }
+              alt={activeThreadName}
+            />
           : <span>
               {activeThreadType === "group"
                 ? "👥"

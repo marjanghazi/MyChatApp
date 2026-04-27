@@ -157,6 +157,7 @@ const Sidebar = ({
           time: group.lastMessageAt,
           isActive: activeThreadType === "group" && selectedGroup?.id === group.id,
           icon: "👥",
+          photoURL: group.photoURL,
         });
       });
     }

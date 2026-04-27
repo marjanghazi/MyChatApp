@@ -17,6 +17,7 @@ import {
   leaveGroupApi,
   removeGroupMemberApi,
   toggleGroupAdminApi,
+  updateGroupProfileApi,
   unfollowChannel,
 } from "./services/communityService";
 import {
@@ -488,6 +489,29 @@ function App() {
     }
   };
 
+  const updateSelectedGroupPhoto = async (file) => {
+    if (!authUser?.uid || !selectedGroup?.id || !file) return;
+    const isAdmin = (selectedGroup.admins || []).includes(authUser.uid);
+    if (!isAdmin) {
+      setStatusText("Only group admins can update group display picture.");
+      return;
+    }
+    setUpdatingProfile(true);
+    try {
+      const { url: photoURL } = await uploadMedia({ uid: selectedGroup.id, folder: "group", file });
+      await updateGroupProfileApi({
+        groupId: selectedGroup.id,
+        requesterId: authUser.uid,
+        photoURL,
+      });
+      setStatusText("✓ Group display picture updated.");
+    } catch (e) {
+      setStatusText(e?.message || "Failed to update group display picture.");
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
+
   // ── Profile ───────────────────────────────────────────────────────────────
   const updateProfileName = async (event) => {
     event.preventDefault();
@@ -730,6 +754,8 @@ function App() {
           authUser={authUser}
           usersById={usersById}
           contacts={contacts}
+          updatingProfile={updatingProfile}
+          onUpdateGroupPhoto={updateSelectedGroupPhoto}
           onBack={() => setShowGroupDetails(false)}
           onLeaveGroup={leaveSelectedGroup}
           onToggleAdmin={toggleGroupAdmin}

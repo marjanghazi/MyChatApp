@@ -29,6 +29,12 @@ export const removeGroupMemberApi = async ({ groupId, requesterId, memberUid }) 
     body: JSON.stringify({ requesterId, memberUid }),
   });
 
+export const updateGroupProfileApi = async ({ groupId, requesterId, name, description, photoURL }) =>
+  apiRequest(`/api/community/groups/${groupId}/profile`, {
+    method: "PATCH",
+    body: JSON.stringify({ requesterId, name, description, photoURL }),
+  });
+
 export const toggleGroupAdminApi = async ({ groupId, requesterId, memberUid, makeAdmin }) =>
   apiRequest(`/api/community/groups/${groupId}/admins/toggle`, {
     method: "POST",
