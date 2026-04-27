@@ -86,7 +86,9 @@ def send_message(body: dict):
             'deliveredTo': [actor_uid, *([target_uid] if is_target_online else [])],
             'readBy': [actor_uid],
         }
-        conversation_ref.set(
+        batch = db.batch()
+        batch.set(
+            conversation_ref,
             {
                 'participants': [actor_uid, target_uid],
                 'participantPhones': [actor_phone or '', target_phone or ''],
@@ -102,7 +104,9 @@ def send_message(body: dict):
             },
             merge=True,
         )
-        conversation_ref.collection('messages').add(final_payload)
+        msg_ref = conversation_ref.collection('messages').document()
+        batch.set(msg_ref, final_payload)
+        batch.commit()
         invalidate_cache(prefix='thread:conversations:')
         invalidate_cache(prefix=f'chat:messages:direct:{thread_id}:')
         return {'ok': True}
@@ -118,8 +122,11 @@ def send_message(body: dict):
             'createdAt': firestore.SERVER_TIMESTAMP,
             **({'replyTo': reply_to} if reply_to else {}),
         }
-        group_ref.collection('messages').add(final_payload)
-        group_ref.set(
+        batch = db.batch()
+        msg_ref = group_ref.collection('messages').document()
+        batch.set(msg_ref, final_payload)
+        batch.set(
+            group_ref,
             {
                 'lastMessage': final_payload['text'],
                 'lastMessageAt': firestore.SERVER_TIMESTAMP,
@@ -127,6 +134,7 @@ def send_message(body: dict):
             },
             merge=True,
         )
+        batch.commit()
         invalidate_cache(prefix=f'chat:messages:group:{thread_id}:')
         invalidate_cache(prefix='thread:groups:')
         return {'ok': True}
@@ -134,16 +142,20 @@ def send_message(body: dict):
     if thread_type == 'channel':
         must(thread_id, 'threadId')
         channel_ref = db.collection('channels').document(thread_id)
-        channel_ref.collection('posts').add(
+        batch = db.batch()
+        post_ref = channel_ref.collection('posts').document()
+        batch.set(
+            post_ref,
             {
                 'text': payload.get('text') or '',
                 'type': 'post',
                 'senderId': actor_uid,
                 'senderName': actor_name,
                 'createdAt': firestore.SERVER_TIMESTAMP,
-            }
+            },
         )
-        channel_ref.set(
+        batch.set(
+            channel_ref,
             {
                 'lastPost': payload.get('text') or '',
                 'lastPostAt': firestore.SERVER_TIMESTAMP,
@@ -151,6 +163,7 @@ def send_message(body: dict):
             },
             merge=True,
         )
+        batch.commit()
         invalidate_cache(prefix=f'chat:messages:channel:{thread_id}:')
         invalidate_cache(key='thread:channels:all')
         return {'ok': True}

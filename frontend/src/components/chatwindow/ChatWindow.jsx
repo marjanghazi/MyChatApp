@@ -626,6 +626,43 @@ const ChatWindow = ({
     return "file";
   };
 
+  const pushOptimisticMessage = ({ payload, threadType }) => {
+    const optimisticId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimisticMessage = {
+      id: optimisticId,
+      ...payload,
+      senderId: authUser?.uid,
+      senderName: profile?.displayName || "You",
+      receiverId: threadType === "direct" ? selectedUser?.uid : undefined,
+      createdAt: new Date().toISOString(),
+      readBy: [authUser?.uid].filter(Boolean),
+      deliveredTo: [authUser?.uid].filter(Boolean),
+      _optimistic: true,
+    };
+    setMessages((prev) => [...prev, optimisticMessage]);
+  };
+
+  const refreshActiveThreadMessages = async () => {
+    try {
+      if (activeThreadType === "direct" && selectedConversationId && authUser?.uid) {
+        const { messages: next = [] } = await fetchThreadMessages("direct", selectedConversationId, authUser.uid);
+        setMessages(next);
+        return;
+      }
+      if (activeThreadType === "group" && selectedGroup?.id && authUser?.uid) {
+        const { messages: next = [] } = await fetchThreadMessages("group", selectedGroup.id, authUser.uid);
+        setMessages(next);
+        return;
+      }
+      if (activeThreadType === "channel" && selectedChannel?.id && authUser?.uid) {
+        const { messages: next = [] } = await fetchThreadMessages("channel", selectedChannel.id, authUser.uid);
+        setMessages(next);
+      }
+    } catch {
+      // Keep optimistic state if immediate refresh fails.
+    }
+  };
+
   // Backend domain endpoint handles persistence logic for direct/group/channel sends.
   const sendMessage = async ({ text = "", file = null, forwardedFrom = null } = {}) => {
     if (!authUser?.uid || !profile) {
@@ -636,6 +673,21 @@ const ChatWindow = ({
 
     if (activeThreadType === "group" && selectedGroup) {
       try {
+        const messagePayload = {
+          text: text.trim(),
+          type: "text",
+          ...(replyTo
+            ? {
+                replyTo: {
+                  id: replyTo.id,
+                  text: replyTo.text,
+                  senderId: replyTo.senderId,
+                  senderName: replyTo.senderName || usersById.get(replyTo.senderId)?.displayName || "Member",
+                },
+              }
+            : {}),
+        };
+        pushOptimisticMessage({ payload: messagePayload, threadType: "group" });
         await sendChatMessage({
           threadType: "group",
           threadId: selectedGroup.id,
@@ -654,6 +706,7 @@ const ChatWindow = ({
         setMessageInput("");
         setReplyTo(null);
         setReplyTargetUser(null);
+        refreshActiveThreadMessages();
       } catch (e) {
         setStatusText("Failed to send: " + e.message);
         return false;
@@ -667,6 +720,10 @@ const ChatWindow = ({
         return false;
       }
       try {
+        pushOptimisticMessage({
+          payload: { text: text.trim(), type: "post" },
+          threadType: "channel",
+        });
         await sendChatMessage({
           threadType: "channel",
           threadId: selectedChannel.id,
@@ -677,6 +734,7 @@ const ChatWindow = ({
         setMessageInput("");
         setReplyTo(null);
         setReplyTargetUser(null);
+        refreshActiveThreadMessages();
         setStatusText("Post published!");
         setTimeout(() => setStatusText(""), 2000);
       } catch (e) {
@@ -718,6 +776,13 @@ const ChatWindow = ({
       const replyPayload = replyTo ? { id: replyTo.id, text: replyTo.text, senderId: replyTo.senderId } : null;
 
       try {
+        pushOptimisticMessage({
+          payload: {
+            ...payload,
+            replyTo: replyPayload || undefined,
+          },
+          threadType: "direct",
+        });
         await sendChatMessage({
           threadType: "direct",
           threadId: selectedConversationId,
@@ -735,6 +800,7 @@ const ChatWindow = ({
         setMessageInput("");
         updateTypingState(false);
         setEditingMessageId(null);
+        refreshActiveThreadMessages();
       } catch (e) {
         console.error("sendMessage error:", e);
         setStatusText("Failed to send: " + e.message);
