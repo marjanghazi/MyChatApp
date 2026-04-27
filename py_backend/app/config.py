@@ -20,6 +20,7 @@ def _candidate_env_paths() -> list[Path]:
 
     return [
         py_backend_dir / '.env',
+        repo_root / 'backend' / '.env',
         repo_root / '.env',
         repo_root / 'frontend' / '.env',
     ]

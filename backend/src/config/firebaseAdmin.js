@@ -24,9 +24,16 @@ export const getFirebaseAdmin = () => {
   }
 
   const credential = buildCredential();
-  app = credential
-    ? admin.initializeApp({ credential })
-    : admin.initializeApp();
+  const storageBucket =
+    process.env.FIREBASE_STORAGE_BUCKET ||
+    process.env.REACT_APP_FIREBASE_STORAGE_BUCKET ||
+    undefined;
+  const appOptions = {
+    ...(credential ? { credential } : {}),
+    ...(storageBucket ? { storageBucket } : {}),
+  };
+
+  app = admin.initializeApp(appOptions);
 
   return app;
 };

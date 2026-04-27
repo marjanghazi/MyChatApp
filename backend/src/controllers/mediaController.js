@@ -9,6 +9,8 @@ const STORAGE_PATH_RULES = [
   /^direct\/[A-Za-z0-9_-]+\/.+$/,
   /^group\/[A-Za-z0-9_-]+\/.+$/,
   /^channel\/[A-Za-z0-9_-]+\/.+$/,
+  /^group-attachments\/[A-Za-z0-9_-]+\/.+$/,
+  /^channel-attachments\/[A-Za-z0-9_-]+\/.+$/,
 ];
 
 const assertAllowedStoragePath = (storagePath) => {
