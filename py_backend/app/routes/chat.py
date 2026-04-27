@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from typing import Any
+from datetime import datetime, timezone
 
 from fastapi import APIRouter
 from firebase_admin import firestore
+from google.api_core.exceptions import FailedPrecondition
 
 from app.errors import must, must_thread_type
 from app.firebase_client import db_client
@@ -274,16 +276,19 @@ def list_call_logs(conversationId: str):
 def list_signals(conversationId: str, to: str):
     must(conversationId, 'conversationId')
     must(to, 'to')
-    snapshot = (
-        db_client()
-        .collection('conversations')
-        .document(conversationId)
-        .collection('signals')
-        .where('to', '==', to)
-        .order_by('createdAt')
-        .stream()
-    )
-    return {'signals': to_docs(snapshot)}
+    signals_ref = db_client().collection('conversations').document(conversationId).collection('signals')
+
+    try:
+        snapshot = signals_ref.where('to', '==', to).order_by('createdAt').stream()
+        return {'signals': to_docs(snapshot)}
+    except FailedPrecondition:
+        # Fallback when composite index (`to` + `createdAt`) is missing.
+        # This avoids long retry delays on polling and preserves response shape.
+        snapshot = signals_ref.where('to', '==', to).stream()
+        signals = to_docs(snapshot)
+        default_dt = datetime.min.replace(tzinfo=timezone.utc)
+        signals.sort(key=lambda signal: signal.get('createdAt') or default_dt)
+        return {'signals': signals}
 
 
 @router.delete('/signals/{signal_id}')

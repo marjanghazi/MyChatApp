@@ -88,3 +88,6 @@ python3 scripts/compare_api_surface.py
 3. `frontend/.env`
 
 This matches backend env precedence so Firebase Admin credentials are resolved consistently between Node and FastAPI backends.
+
+## Firestore index note
+If `/api/chat/signals` is slow or returns a Firestore index error, deploy indexes from `firebase/firestore.indexes.json` to your Firebase project. The backend now has a fallback query for missing signal index, but creating the index is recommended for best performance.
