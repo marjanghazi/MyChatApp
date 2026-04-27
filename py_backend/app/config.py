@@ -1,20 +1,34 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
+import os
 from dotenv import load_dotenv
 
 
-def load_env() -> None:
+def _candidate_env_paths() -> list[Path]:
+    """Match backend/src/config/loadEnv.js precedence for Python backend.
+
+    Order mirrors JS backend behavior:
+    1) py_backend/.env
+    2) repository-root .env
+    3) repository-root frontend/.env
+    """
+
     base = Path(__file__).resolve()
-    env_paths = [
-        base.parents[2] / '.env',
-        base.parents[3] / '.env',
-        base.parents[3] / 'frontend' / '.env',
+    py_backend_dir = base.parents[1]
+    repo_root = base.parents[2]
+
+    return [
+        py_backend_dir / '.env',
+        repo_root / '.env',
+        repo_root / 'frontend' / '.env',
     ]
-    for p in env_paths:
-        if p.exists():
-            load_dotenv(p, override=False)
+
+
+def load_env() -> None:
+    for path in _candidate_env_paths():
+        if path.exists():
+            load_dotenv(path, override=False)
 
 
 def cors_origins() -> list[str]:

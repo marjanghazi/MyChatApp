@@ -6,8 +6,8 @@
     "frontend"
   ],
   "scripts": {
-    "start:backend": "npm --prefix backend start",
+    "start:backend": "bash -lc 'cd py_backend && uvicorn app.main:app --host 0.0.0.0 --port 4000 --reload'",
     "start:frontend": "npm --prefix frontend start",
-    "dev": "bash -lc 'npm --prefix backend run dev & npm --prefix frontend start'"
+    "dev": "bash -lc \"cd /workspace/MyChatApp && (cd py_backend && uvicorn app.main:app --host 0.0.0.0 --port 4000 --reload) & npm --prefix frontend start\""
   }
 }

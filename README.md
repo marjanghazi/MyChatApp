@@ -3,7 +3,8 @@
 Repository structure:
 
 - `frontend/` — frontend-only React application (UI + API calls).
-- `backend/` — single backend source (API, rules/indexes, server-side business logic).
+- `backend/` — Node.js backend (stable reference implementation).
+- `py_backend/` — FastAPI backend intended to mirror `backend/` behavior and routes.
 
 ## Goal Architecture
 Frontend clients (web + mobile) should call backend APIs only.

@@ -79,3 +79,12 @@ python3 scripts/compare_api_surface.py
 ## Notes
 - Set `REACT_APP_API_BASE_URL` in frontend to this backend URL when testing.
 - Ensure Firebase credentials and `FIREBASE_WEB_API_KEY` are configured in `.env`.
+
+
+## Credential loading behavior
+`py_backend` now loads env files in this order (first value wins):
+1. `py_backend/.env`
+2. repository `.env`
+3. `frontend/.env`
+
+This matches backend env precedence so Firebase Admin credentials are resolved consistently between Node and FastAPI backends.
