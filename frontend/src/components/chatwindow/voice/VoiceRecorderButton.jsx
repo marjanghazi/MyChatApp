@@ -5,11 +5,18 @@ function VoiceRecorderButton({ disabled, onVoiceRecorded, onStatusChange }) {
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
   const chunksRef = useRef([]);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const sourceRef = useRef(null);
+  const animationRef = useRef(null);
+  const recordingStartedAtRef = useRef(0);
 
   const [isRecording, setIsRecording] = useState(false);
   const [pendingVoiceBlob, setPendingVoiceBlob] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [levels, setLevels] = useState(() => Array.from({ length: 24 }, () => 0.08));
 
 
   useEffect(() => {
@@ -23,12 +30,28 @@ function VoiceRecorderButton({ disabled, onVoiceRecorded, onStatusChange }) {
   }, [pendingVoiceBlob]);
 
   const cleanup = () => {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+    if (sourceRef.current) {
+      sourceRef.current.disconnect();
+      sourceRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
     recorderRef.current = null;
     chunksRef.current = [];
+    recordingStartedAtRef.current = 0;
+    setRecordingSeconds(0);
+    setLevels(Array.from({ length: 24 }, () => 0.08));
   };
 
   const startRecording = async () => {
@@ -41,10 +64,42 @@ function VoiceRecorderButton({ disabled, onVoiceRecorded, onStatusChange }) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      recordingStartedAtRef.current = Date.now();
+      setRecordingSeconds(0);
 
       const recorder = new MediaRecorder(stream);
       recorderRef.current = recorder;
       chunksRef.current = [];
+
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextCtor) {
+        const audioContext = new AudioContextCtor();
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 128;
+        analyser.smoothingTimeConstant = 0.8;
+        const source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+        audioContextRef.current = audioContext;
+        analyserRef.current = analyser;
+        sourceRef.current = source;
+
+        const dataBuffer = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteTimeDomainData(dataBuffer);
+          let sum = 0;
+          for (let i = 0; i < dataBuffer.length; i += 1) {
+            const normalized = (dataBuffer[i] - 128) / 128;
+            sum += normalized * normalized;
+          }
+          const rms = Math.sqrt(sum / dataBuffer.length);
+          const nextLevel = Math.min(1, 0.12 + rms * 4.2);
+          setLevels((prev) => [...prev.slice(1), nextLevel]);
+          setRecordingSeconds(Math.floor((Date.now() - recordingStartedAtRef.current) / 1000));
+          animationRef.current = requestAnimationFrame(tick);
+        };
+        animationRef.current = requestAnimationFrame(tick);
+      }
 
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) chunksRef.current.push(event.data);
@@ -111,6 +166,24 @@ function VoiceRecorderButton({ disabled, onVoiceRecorded, onStatusChange }) {
 
   return (
     <div className="qx-voice-recorder-wrap">
+      {isRecording && (
+        <div className="qx-voice-live">
+          <span className="qx-voice-live-dot" />
+          <span className="qx-voice-live-time">
+            {`${String(Math.floor(recordingSeconds / 60)).padStart(2, "0")}:${String(recordingSeconds % 60).padStart(2, "0")}`}
+          </span>
+          <div className="qx-voice-live-wave" aria-hidden="true">
+            {levels.map((level, index) => (
+              <span
+                key={index}
+                className="qx-voice-live-bar"
+                style={{ transform: `scaleY(${Math.max(0.14, level)})` }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <button
         type="button"
         className={`qx-composer-btn qx-composer-btn--voice ${isRecording ? "qx-composer-btn--recording" : ""}`}

@@ -4,6 +4,50 @@
   gap: 8px;
 }
 
+.qx-voice-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 110, 110, 0.26);
+  background: rgba(47, 12, 20, 0.55);
+  min-width: 190px;
+}
+
+.qx-voice-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff5d5d;
+  box-shadow: 0 0 10px rgba(255, 93, 93, 0.9);
+  animation: qx-recording-pulse 1s ease-in-out infinite;
+}
+
+.qx-voice-live-time {
+  font-size: 0.72rem;
+  color: #ffbcbc;
+  font-weight: 600;
+  min-width: 38px;
+}
+
+.qx-voice-live-wave {
+  height: 16px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.qx-voice-live-bar {
+  width: 3px;
+  height: 100%;
+  border-radius: 999px;
+  transform-origin: center;
+  background: linear-gradient(180deg, #ff9898, #ff6464);
+  transition: transform 90ms linear;
+}
+
 .qx-composer-btn--voice {
   position: relative;
 }
@@ -65,4 +109,9 @@
 .qx-voice-action--send {
   background: rgba(77, 127, 255, 0.2);
   color: #8ab0ff;
+}
+
+@keyframes qx-recording-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
 }

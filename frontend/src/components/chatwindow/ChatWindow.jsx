@@ -675,9 +675,30 @@ const ChatWindow = ({
 
     if (activeThreadType === "group" && selectedGroup) {
       try {
+        let payload = { text: text.trim(), type: "text" };
+        if (file) {
+          setSendingAttachment(true);
+          try {
+            const fileURL = await uploadToStorage(`group-attachments/${selectedGroup.id}`, file);
+            payload = {
+              type: inferMessageTypeFromFile(file),
+              text: text.trim() || file.name,
+              fileURL,
+              fileName: file.name,
+              fileSize: file.size,
+              mimeType: file.type || null,
+            };
+          } catch (err) {
+            setMessageInput(previousInput);
+            setStatusText(err?.message || "Attachment upload failed.");
+            setSendingAttachment(false);
+            return false;
+          } finally {
+            setSendingAttachment(false);
+          }
+        }
         const messagePayload = {
-          text: text.trim(),
-          type: "text",
+          ...payload,
           ...(replyTo
             ? {
                 replyTo: {
@@ -695,7 +716,7 @@ const ChatWindow = ({
           threadId: selectedGroup.id,
           actorUid: authUser.uid,
           actorName: profile.displayName,
-          payload: { text: text.trim(), type: "text" },
+          payload,
           replyTo: replyTo
             ? {
                 id: replyTo.id,
@@ -722,8 +743,30 @@ const ChatWindow = ({
         return false;
       }
       try {
+        let payload = { text: text.trim(), type: "post" };
+        if (file) {
+          setSendingAttachment(true);
+          try {
+            const fileURL = await uploadToStorage(`channel-attachments/${selectedChannel.id}`, file);
+            payload = {
+              type: inferMessageTypeFromFile(file),
+              text: text.trim() || file.name,
+              fileURL,
+              fileName: file.name,
+              fileSize: file.size,
+              mimeType: file.type || null,
+            };
+          } catch (err) {
+            setMessageInput(previousInput);
+            setStatusText(err?.message || "Attachment upload failed.");
+            setSendingAttachment(false);
+            return false;
+          } finally {
+            setSendingAttachment(false);
+          }
+        }
         pushOptimisticMessage({
-          payload: { text: text.trim(), type: "post" },
+          payload,
           threadType: "channel",
         });
         await sendChatMessage({
@@ -731,7 +774,7 @@ const ChatWindow = ({
           threadId: selectedChannel.id,
           actorUid: authUser.uid,
           actorName: profile.displayName,
-          payload: { text: text.trim(), type: "post" },
+          payload,
         });
         setReplyTo(null);
         setReplyTargetUser(null);
