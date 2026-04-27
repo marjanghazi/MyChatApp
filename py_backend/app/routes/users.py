@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from firebase_admin import firestore
 
+from app.cache import cached, invalidate_cache
 from app.errors import must, phone_variants
 from app.firebase_client import db_client
 
@@ -50,16 +51,21 @@ def upsert_profile(body: dict):
         'updatedAt': now,
     }
     users_col().document(uid).set(payload, merge=True)
+    invalidate_cache(key=f'users:profile:{uid}')
+    invalidate_cache(prefix='thread:users:')
     return {'ok': True}
 
 
 @router.get('/{uid}/profile')
 def get_profile(uid: str):
     must(uid, 'uid')
-    snap = users_col().document(uid).get()
-    if not snap.exists:
-        return {'profile': None}
-    return {'profile': snap.to_dict()}
+    def load_profile():
+        snap = users_col().document(uid).get()
+        if not snap.exists:
+            return None
+        return snap.to_dict()
+
+    return {'profile': cached(f'users:profile:{uid}', 5, load_profile)}
 
 
 @router.post('/{uid}/presence')
@@ -73,6 +79,8 @@ def set_presence(uid: str, body: dict):
         },
         merge=True,
     )
+    invalidate_cache(key=f'users:profile:{uid}')
+    invalidate_cache(prefix='thread:users:')
     return {'ok': True}
 
 
@@ -83,6 +91,8 @@ def patch_profile(uid: str, body: dict):
     patch = {k: v for k, v in (body or {}).items() if k in allowed and v is not None}
     patch['updatedAt'] = datetime.now(timezone.utc)
     users_col().document(uid).set(patch, merge=True)
+    invalidate_cache(key=f'users:profile:{uid}')
+    invalidate_cache(prefix='thread:users:')
     return {'ok': True}
 
 
@@ -116,4 +126,5 @@ def add_contact(uid: str, body: dict):
             'updatedAt': datetime.now(timezone.utc),
         }
     )
+    invalidate_cache(key=f'users:profile:{uid}')
     return {'ok': True, 'candidate': candidate}

@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from firebase_admin import firestore
 from google.api_core.exceptions import FailedPrecondition
 
+from app.cache import cached, invalidate_cache
 from app.errors import must, must_thread_type
 from app.firebase_client import db_client
 
@@ -102,6 +103,8 @@ def send_message(body: dict):
             merge=True,
         )
         conversation_ref.collection('messages').add(final_payload)
+        invalidate_cache(prefix='thread:conversations:')
+        invalidate_cache(prefix=f'chat:messages:direct:{thread_id}:')
         return {'ok': True}
 
     if thread_type == 'group':
@@ -124,6 +127,8 @@ def send_message(body: dict):
             },
             merge=True,
         )
+        invalidate_cache(prefix=f'chat:messages:group:{thread_id}:')
+        invalidate_cache(prefix='thread:groups:')
         return {'ok': True}
 
     if thread_type == 'channel':
@@ -146,6 +151,8 @@ def send_message(body: dict):
             },
             merge=True,
         )
+        invalidate_cache(prefix=f'chat:messages:channel:{thread_id}:')
+        invalidate_cache(key='thread:channels:all')
         return {'ok': True}
 
     return {'ok': False}
@@ -165,6 +172,7 @@ def edit_message(body: dict):
     ref = get_message_ref(thread_type, thread_id, message_id)
     must(ref, 'messageRef')
     ref.update({'text': text, 'editedAt': firestore.SERVER_TIMESTAMP})
+    invalidate_cache(prefix=f'chat:messages:{thread_type}:{thread_id}:')
     return {'ok': True}
 
 
@@ -182,6 +190,7 @@ def delete_for_me(body: dict):
     ref = get_message_ref(thread_type, thread_id, message_id)
     must(ref, 'messageRef')
     ref.update({'deletedFor': firestore.ArrayUnion([actor_uid])})
+    invalidate_cache(prefix=f'chat:messages:{thread_type}:{thread_id}:')
     return {'ok': True}
 
 
@@ -206,6 +215,7 @@ def delete_for_everyone(body: dict):
             'fileSize': None,
         }
     )
+    invalidate_cache(prefix=f'chat:messages:{thread_type}:{thread_id}:')
     return {'ok': True}
 
 
@@ -228,6 +238,7 @@ def toggle_flag(body: dict):
     must(ref, 'messageRef')
     value = firestore.ArrayRemove([actor_uid]) if already_flagged else firestore.ArrayUnion([actor_uid])
     ref.update({key: value})
+    invalidate_cache(prefix=f'chat:messages:{thread_type}:{thread_id}:')
     return {'ok': True}
 
 
@@ -236,40 +247,49 @@ def list_messages(threadType: str, threadId: str, uid: str | None = None):
     db = db_client()
     must_thread_type(threadType)
     must(threadId, 'threadId')
+    cache_key = f'chat:messages:{threadType}:{threadId}:{uid or "_"}'
 
-    if threadType == 'direct':
-        snapshot = (
-            db.collection('conversations')
-            .document(threadId)
-            .collection('messages')
-            .order_by('createdAt')
-            .limit(300)
-            .stream()
-        )
-    elif threadType == 'group':
-        snapshot = db.collection('groups').document(threadId).collection('messages').order_by('createdAt').limit(300).stream()
-    else:
-        snapshot = db.collection('channels').document(threadId).collection('posts').order_by('createdAt').limit(300).stream()
+    def load_messages():
+        if threadType == 'direct':
+            snapshot = (
+                db.collection('conversations')
+                .document(threadId)
+                .collection('messages')
+                .order_by('createdAt')
+                .limit(300)
+                .stream()
+            )
+        elif threadType == 'group':
+            snapshot = db.collection('groups').document(threadId).collection('messages').order_by('createdAt').limit(300).stream()
+        else:
+            snapshot = db.collection('channels').document(threadId).collection('posts').order_by('createdAt').limit(300).stream()
 
-    messages = to_docs(snapshot)
-    if uid:
-        messages = [m for m in messages if uid not in (m.get('deletedFor') or [])]
-    return {'messages': messages}
+        messages = to_docs(snapshot)
+        if uid:
+            messages = [m for m in messages if uid not in (m.get('deletedFor') or [])]
+        return messages
+
+    return {'messages': cached(cache_key, 2, load_messages)}
 
 
 @router.get('/call-logs')
 def list_call_logs(conversationId: str):
     must(conversationId, 'conversationId')
-    snapshot = (
-        db_client()
-        .collection('conversations')
-        .document(conversationId)
-        .collection('callLogs')
-        .order_by('createdAt', direction=firestore.Query.DESCENDING)
-        .limit(200)
-        .stream()
-    )
-    return {'logs': to_docs(snapshot)}
+    return {
+        'logs': cached(
+            f'chat:calllogs:{conversationId}',
+            5,
+            lambda: to_docs(
+                db_client()
+                .collection('conversations')
+                .document(conversationId)
+                .collection('callLogs')
+                .order_by('createdAt', direction=firestore.Query.DESCENDING)
+                .limit(200)
+                .stream()
+            ),
+        )
+    }
 
 
 @router.get('/signals')
@@ -296,6 +316,7 @@ def delete_signal(signal_id: str, conversationId: str):
     must(signal_id, 'signalId')
     must(conversationId, 'conversationId')
     db_client().collection('conversations').document(conversationId).collection('signals').document(signal_id).delete()
+    invalidate_cache(prefix=f'chat:signals:{conversationId}:')
     return {'ok': True}
 
 
@@ -330,6 +351,8 @@ def mark_seen(body: dict):
         merge=True,
     )
     batch.commit()
+    invalidate_cache(prefix=f'chat:messages:direct:{conversation_id}:')
+    invalidate_cache(prefix='thread:conversations:')
     return {'ok': True}
 
 
@@ -341,6 +364,7 @@ def update_meta(body: dict):
     db_client().collection('conversations').document(conversation_id).set(
         {**sanitize_patch(patch), 'updatedAt': firestore.SERVER_TIMESTAMP}, merge=True
     )
+    invalidate_cache(prefix='thread:conversations:')
     return {'ok': True}
 
 
@@ -352,6 +376,7 @@ def add_call_log(body: dict):
     db_client().collection('conversations').document(conversation_id).collection('callLogs').add(
         {**call_data, 'createdAt': firestore.SERVER_TIMESTAMP}
     )
+    invalidate_cache(key=f'chat:calllogs:{conversation_id}')
     return {'ok': True}
 
 
@@ -363,6 +388,8 @@ def add_conversation_message(body: dict):
     db_client().collection('conversations').document(conversation_id).collection('messages').add(
         {**message, 'createdAt': firestore.SERVER_TIMESTAMP}
     )
+    invalidate_cache(prefix=f'chat:messages:direct:{conversation_id}:')
+    invalidate_cache(prefix='thread:conversations:')
     return {'ok': True}
 
 
@@ -379,6 +406,7 @@ def add_conversation_signal(body: dict):
     db_client().collection('conversations').document(conversation_id).collection('signals').add(
         {**signal, 'createdAt': firestore.SERVER_TIMESTAMP}
     )
+    invalidate_cache(prefix=f'chat:signals:{conversation_id}:')
     return {'ok': True}
 
 
@@ -403,4 +431,6 @@ def clear_for_user(body: dict):
         merge=True,
     )
     batch.commit()
+    invalidate_cache(prefix=f'chat:messages:direct:{conversation_id}:')
+    invalidate_cache(prefix='thread:conversations:')
     return {'ok': True}
