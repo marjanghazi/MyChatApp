@@ -56,8 +56,10 @@ const getAuthErrorMessage = (error) => {
 };
 
 const isPageHidden = () => typeof document !== "undefined" && document.hidden;
+const syncedProfileUids = new Set();
 
 function App() {
+  const lastProfileSyncRef = useRef({ uid: "", ts: 0 });
   const [appTheme, setAppTheme] = useState(() => {
     const saved = localStorage.getItem("appTheme");
     if (saved === "light" || saved === "dark") return saved;
@@ -110,11 +112,20 @@ function App() {
         return;
       }
       try {
+        const now = Date.now();
+        if (syncedProfileUids.has(user.uid)) {
+          return;
+        }
+        if (lastProfileSyncRef.current.uid === user.uid && now - lastProfileSyncRef.current.ts < 5 * 60_000) {
+          return;
+        }
         await upsertUserProfile({
           uid: user.uid,
           displayName: user.displayName || user.email?.split("@")[0] || "User",
           email: user.email || "",
         });
+        lastProfileSyncRef.current = { uid: user.uid, ts: now };
+        syncedProfileUids.add(user.uid);
       } catch {
         setAuthError("Unable to sync profile. Check network and try again.");
       }
@@ -124,7 +135,8 @@ function App() {
 
   // ── Presence ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!authUser) return undefined;
+    if (!authUser?.uid) return undefined;
+    const uid = authUser.uid;
 
     let heartbeatTimer = null;
     let profileTimer = null;
@@ -132,7 +144,7 @@ function App() {
 
     const updatePresenceState = async (isOnline) => {
       try {
-        await setPresence(authUser.uid, isOnline);
+        await setPresence(uid, isOnline);
       } catch {}
     };
 
@@ -140,7 +152,7 @@ function App() {
       if (profileInFlight) return;
       profileInFlight = true;
       try {
-        const { profile: current } = await fetchUserProfile(authUser.uid);
+        const { profile: current } = await fetchUserProfile(uid);
         setProfile(current || null);
       } catch {}
       finally { profileInFlight = false; }
@@ -155,7 +167,7 @@ function App() {
     profileTimer = window.setInterval(() => {
       if (isPageHidden()) return;
       loadProfile();
-    }, 30_000);
+    }, 120_000);
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("beforeunload", markOffline);
 
@@ -166,11 +178,12 @@ function App() {
       window.removeEventListener("beforeunload", markOffline);
       markOffline();
     };
-  }, [authUser]);
+  }, [authUser?.uid]);
 
   // ── Users ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!authUser) return undefined;
+    if (!authUser?.uid) return undefined;
+    const uid = authUser.uid;
 
     let active = true;
     let inFlight = false;
@@ -178,7 +191,7 @@ function App() {
       if (!active || inFlight || isPageHidden()) return;
       inFlight = true;
       try {
-        const { users } = await fetchUsers(authUser.uid);
+        const { users } = await fetchUsers(uid);
         if (active) setAllUsers(users || []);
       } catch {
         if (active) setAllUsers([]);
@@ -186,16 +199,17 @@ function App() {
     };
 
     load();
-    const timer = setInterval(load, 20_000);
+    const timer = setInterval(load, 60_000);
     return () => {
       active = false;
       clearInterval(timer);
     };
-  }, [authUser]);
+  }, [authUser?.uid]);
 
   // ── Conversations ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!authUser) return undefined;
+    if (!authUser?.uid) return undefined;
+    const uid = authUser.uid;
 
     let active = true;
     let inFlight = false;
@@ -203,7 +217,7 @@ function App() {
       if (!active || inFlight || isPageHidden()) return;
       inFlight = true;
       try {
-        const { conversations: next } = await fetchConversations(authUser.uid);
+        const { conversations: next } = await fetchConversations(uid);
         if (active) setConversations(next || {});
       } catch {
         if (active) setConversations({});
@@ -211,12 +225,12 @@ function App() {
     };
 
     load();
-    const timer = setInterval(load, 6_000);
+    const timer = setInterval(load, 15_000);
     return () => {
       active = false;
       clearInterval(timer);
     };
-  }, [authUser]);
+  }, [authUser?.uid]);
 
   useEffect(() => {
     if (!authUser?.uid) return;
@@ -232,7 +246,8 @@ function App() {
 
   // ── Groups ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!authUser) return undefined;
+    if (!authUser?.uid) return undefined;
+    const uid = authUser.uid;
 
     let active = true;
     let inFlight = false;
@@ -240,7 +255,7 @@ function App() {
       if (!active || inFlight || isPageHidden()) return;
       inFlight = true;
       try {
-        const { groups: next } = await fetchGroups(authUser.uid);
+        const { groups: next } = await fetchGroups(uid);
         if (active) setGroups(next || []);
       } catch {
         if (active) setGroups([]);
@@ -248,16 +263,17 @@ function App() {
     };
 
     load();
-    const timer = setInterval(load, 20_000);
+    const timer = setInterval(load, 60_000);
     return () => {
       active = false;
       clearInterval(timer);
     };
-  }, [authUser]);
+  }, [authUser?.uid]);
 
   // ── Channels ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!authUser) return undefined;
+    if (!authUser?.uid) return undefined;
+    const uid = authUser.uid;
 
     let active = true;
     let inFlight = false;
@@ -267,8 +283,8 @@ function App() {
       try {
         const { channels = [] } = await fetchChannels();
         if (!active) return;
-        setFollowedChannels(channels.filter((c) => (c.followerIds || []).includes(authUser.uid)));
-        setDiscoverChannels(channels.filter((c) => !(c.followerIds || []).includes(authUser.uid)));
+        setFollowedChannels(channels.filter((c) => (c.followerIds || []).includes(uid)));
+        setDiscoverChannels(channels.filter((c) => !(c.followerIds || []).includes(uid)));
       } catch {
         if (!active) return;
         setFollowedChannels([]);
@@ -277,12 +293,12 @@ function App() {
     };
 
     load();
-    const timer = setInterval(load, 20_000);
+    const timer = setInterval(load, 60_000);
     return () => {
       active = false;
       clearInterval(timer);
     };
-  }, [authUser]);
+  }, [authUser?.uid]);
 
   useEffect(() => { setProfileNameInput(profile?.displayName || ""); }, [profile?.displayName]);
   useEffect(() => { setShowGroupDetails(false); }, [selectedGroup?.id, activeThreadType]);

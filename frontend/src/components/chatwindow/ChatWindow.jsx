@@ -202,7 +202,7 @@ const ChatWindow = ({
     };
 
     run();
-    const timer = setInterval(run, 2500);
+    const timer = setInterval(run, 7000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -211,7 +211,7 @@ const ChatWindow = ({
 
   // ── Messages polling — group ────────────────────────────────────────────
   useEffect(() => {
-    if (!authUser?.uid || !selectedGroup || activeThreadType !== "group") return undefined;
+    if (!authUser?.uid || !selectedGroup?.id || activeThreadType !== "group") return undefined;
     let alive = true;
     let inFlight = false;
     const run = async () => {
@@ -227,16 +227,16 @@ const ChatWindow = ({
       }
     };
     run();
-    const timer = setInterval(run, 3000);
+    const timer = setInterval(run, 7000);
     return () => {
       alive = false;
       clearInterval(timer);
     };
-  }, [authUser?.uid, selectedGroup, activeThreadType]);
+  }, [authUser?.uid, selectedGroup?.id, activeThreadType]);
 
   // ── Messages polling — channel ──────────────────────────────────────────
   useEffect(() => {
-    if (!authUser?.uid || !selectedChannel || activeThreadType !== "channel") return undefined;
+    if (!authUser?.uid || !selectedChannel?.id || activeThreadType !== "channel") return undefined;
     let alive = true;
     let inFlight = false;
     const run = async () => {
@@ -252,12 +252,12 @@ const ChatWindow = ({
       }
     };
     run();
-    const timer = setInterval(run, 3000);
+    const timer = setInterval(run, 7000);
     return () => {
       alive = false;
       clearInterval(timer);
     };
-  }, [authUser?.uid, selectedChannel, activeThreadType]);
+  }, [authUser?.uid, selectedChannel?.id, activeThreadType]);
 
   // ── Call logs polling ───────────────────────────────────────────────────
   useEffect(() => {
@@ -277,7 +277,7 @@ const ChatWindow = ({
       }
     };
     run();
-    const timer = setInterval(run, 6000);
+    const timer = setInterval(run, 15_000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -338,7 +338,7 @@ const ChatWindow = ({
     };
 
     run();
-    const timer = setInterval(run, 1800);
+    const timer = setInterval(run, 4000);
     return () => {
       alive = false;
       clearInterval(timer);
