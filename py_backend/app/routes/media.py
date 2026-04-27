@@ -5,6 +5,7 @@ import time
 import re
 
 from fastapi import APIRouter, HTTPException
+from google.api_core.exceptions import NotFound as GcsNotFound
 
 from app.errors import must
 from app.firebase_client import storage_bucket
@@ -57,7 +58,13 @@ def upload(body: dict):
         raise HTTPException(status_code=500, detail=f'Firebase Storage misconfigured: {exc}') from exc
 
     blob = bucket.blob(file_path)
-    blob.upload_from_string(base64.b64decode(data_base64), content_type=content_type)
+    try:
+        blob.upload_from_string(base64.b64decode(data_base64), content_type=content_type)
+    except GcsNotFound as exc:
+        raise HTTPException(
+            status_code=500,
+            detail='Firebase Storage bucket was not found. Check FIREBASE_STORAGE_BUCKET and bucket name in Firebase Console.',
+        ) from exc
     return {'ok': True, 'url': signed_url(file_path), 'path': file_path}
 
 
@@ -78,7 +85,13 @@ def upload_by_path(body: dict):
         raise HTTPException(status_code=500, detail=f'Firebase Storage misconfigured: {exc}') from exc
 
     blob = bucket.blob(storage_path)
-    blob.upload_from_string(base64.b64decode(data_base64), content_type=content_type)
+    try:
+        blob.upload_from_string(base64.b64decode(data_base64), content_type=content_type)
+    except GcsNotFound as exc:
+        raise HTTPException(
+            status_code=500,
+            detail='Firebase Storage bucket was not found. Check FIREBASE_STORAGE_BUCKET and bucket name in Firebase Console.',
+        ) from exc
     return {'ok': True, 'url': signed_url(storage_path), 'path': storage_path}
 
 
