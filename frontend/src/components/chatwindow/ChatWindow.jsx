@@ -670,6 +670,8 @@ const ChatWindow = ({
       return false;
     }
     if (!text.trim() && !file) return false;
+    const previousInput = messageInput;
+    setMessageInput("");
 
     if (activeThreadType === "group" && selectedGroup) {
       try {
@@ -703,11 +705,11 @@ const ChatWindow = ({
               }
             : null,
         });
-        setMessageInput("");
         setReplyTo(null);
         setReplyTargetUser(null);
         refreshActiveThreadMessages();
       } catch (e) {
+        setMessageInput(previousInput);
         setStatusText("Failed to send: " + e.message);
         return false;
       }
@@ -731,13 +733,13 @@ const ChatWindow = ({
           actorName: profile.displayName,
           payload: { text: text.trim(), type: "post" },
         });
-        setMessageInput("");
         setReplyTo(null);
         setReplyTargetUser(null);
         refreshActiveThreadMessages();
         setStatusText("Post published!");
         setTimeout(() => setStatusText(""), 2000);
       } catch (e) {
+        setMessageInput(previousInput);
         setStatusText("Failed to send post: " + e.message);
         return false;
       }
@@ -764,6 +766,7 @@ const ChatWindow = ({
             mimeType: file.type || null,
           };
         } catch (err) {
+          setMessageInput(previousInput);
           setStatusText(err?.message || "Attachment upload failed.");
           setSendingAttachment(false);
           return false;
@@ -797,11 +800,11 @@ const ChatWindow = ({
         });
         setReplyTo(null);
         setReplyTargetUser(null);
-        setMessageInput("");
         updateTypingState(false);
         setEditingMessageId(null);
         refreshActiveThreadMessages();
       } catch (e) {
+        setMessageInput(previousInput);
         console.error("sendMessage error:", e);
         setStatusText("Failed to send: " + e.message);
         setTimeout(() => setStatusText(""), 3000);
