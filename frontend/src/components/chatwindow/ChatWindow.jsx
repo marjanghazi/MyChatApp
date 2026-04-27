@@ -183,7 +183,10 @@ const ChatWindow = ({
     if (!authUser?.uid || !selectedUser?.uid || activeThreadType !== "direct" || !selectedConversationId) return undefined;
 
     let alive = true;
+    let inFlight = false;
     const run = async () => {
+      if (!alive || inFlight || document.hidden) return;
+      inFlight = true;
       try {
         const { messages: next = [] } = await fetchThreadMessages("direct", selectedConversationId, authUser.uid);
         if (!alive) return;
@@ -193,11 +196,13 @@ const ChatWindow = ({
         }
       } catch (error) {
         console.error("direct polling error", error);
+      } finally {
+        inFlight = false;
       }
     };
 
     run();
-    const timer = setInterval(run, 1200);
+    const timer = setInterval(run, 2500);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -208,16 +213,21 @@ const ChatWindow = ({
   useEffect(() => {
     if (!authUser?.uid || !selectedGroup || activeThreadType !== "group") return undefined;
     let alive = true;
+    let inFlight = false;
     const run = async () => {
+      if (!alive || inFlight || document.hidden) return;
+      inFlight = true;
       try {
         const { messages: next = [] } = await fetchThreadMessages("group", selectedGroup.id, authUser.uid);
         if (alive) setMessages(next);
       } catch (error) {
         console.error("group polling error", error);
+      } finally {
+        inFlight = false;
       }
     };
     run();
-    const timer = setInterval(run, 1500);
+    const timer = setInterval(run, 3000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -228,16 +238,21 @@ const ChatWindow = ({
   useEffect(() => {
     if (!authUser?.uid || !selectedChannel || activeThreadType !== "channel") return undefined;
     let alive = true;
+    let inFlight = false;
     const run = async () => {
+      if (!alive || inFlight || document.hidden) return;
+      inFlight = true;
       try {
         const { messages: next = [] } = await fetchThreadMessages("channel", selectedChannel.id, authUser.uid);
         if (alive) setMessages(next);
       } catch (error) {
         console.error("channel polling error", error);
+      } finally {
+        inFlight = false;
       }
     };
     run();
-    const timer = setInterval(run, 1500);
+    const timer = setInterval(run, 3000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -248,16 +263,21 @@ const ChatWindow = ({
   useEffect(() => {
     if (!authUser?.uid || !selectedConversationId) return undefined;
     let alive = true;
+    let inFlight = false;
     const run = async () => {
+      if (!alive || inFlight || document.hidden) return;
+      inFlight = true;
       try {
         const { logs = [] } = await fetchCallLogs(selectedConversationId);
         if (alive) setCallLogs(logs);
       } catch (error) {
         console.error("call log polling error", error);
+      } finally {
+        inFlight = false;
       }
     };
     run();
-    const timer = setInterval(run, 2000);
+    const timer = setInterval(run, 6000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -269,7 +289,10 @@ const ChatWindow = ({
     if (!authUser?.uid || !selectedConversationId) return undefined;
 
     let alive = true;
+    let inFlight = false;
     const run = async () => {
+      if (!alive || inFlight || document.hidden) return;
+      inFlight = true;
       try {
         const { signals = [] } = await fetchSignals(selectedConversationId, authUser.uid);
         for (const signal of signals) {
@@ -309,11 +332,13 @@ const ChatWindow = ({
         }
       } catch (error) {
         console.error("signal polling error", error);
+      } finally {
+        inFlight = false;
       }
     };
 
     run();
-    const timer = setInterval(run, 900);
+    const timer = setInterval(run, 1800);
     return () => {
       alive = false;
       clearInterval(timer);

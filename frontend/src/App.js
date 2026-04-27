@@ -55,6 +55,8 @@ const getAuthErrorMessage = (error) => {
   return AUTH_ERROR_MESSAGES[error.code] || error.message || "Unable to complete request.";
 };
 
+const isPageHidden = () => typeof document !== "undefined" && document.hidden;
+
 function App() {
   const [appTheme, setAppTheme] = useState(() => {
     const saved = localStorage.getItem("appTheme");
@@ -126,6 +128,7 @@ function App() {
 
     let heartbeatTimer = null;
     let profileTimer = null;
+    let profileInFlight = false;
 
     const updatePresenceState = async (isOnline) => {
       try {
@@ -134,10 +137,13 @@ function App() {
     };
 
     const loadProfile = async () => {
+      if (profileInFlight) return;
+      profileInFlight = true;
       try {
         const { profile: current } = await fetchUserProfile(authUser.uid);
         setProfile(current || null);
       } catch {}
+      finally { profileInFlight = false; }
     };
 
     const markOffline = () => updatePresenceState(false);
@@ -146,7 +152,10 @@ function App() {
     updatePresenceState(true);
     loadProfile();
     heartbeatTimer = window.setInterval(() => updatePresenceState(!document.hidden), 60_000);
-    profileTimer = window.setInterval(loadProfile, 4000);
+    profileTimer = window.setInterval(() => {
+      if (isPageHidden()) return;
+      loadProfile();
+    }, 30_000);
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("beforeunload", markOffline);
 
@@ -164,17 +173,20 @@ function App() {
     if (!authUser) return undefined;
 
     let active = true;
+    let inFlight = false;
     const load = async () => {
+      if (!active || inFlight || isPageHidden()) return;
+      inFlight = true;
       try {
         const { users } = await fetchUsers(authUser.uid);
         if (active) setAllUsers(users || []);
       } catch {
         if (active) setAllUsers([]);
-      }
+      } finally { inFlight = false; }
     };
 
     load();
-    const timer = setInterval(load, 5000);
+    const timer = setInterval(load, 20_000);
     return () => {
       active = false;
       clearInterval(timer);
@@ -186,17 +198,20 @@ function App() {
     if (!authUser) return undefined;
 
     let active = true;
+    let inFlight = false;
     const load = async () => {
+      if (!active || inFlight || isPageHidden()) return;
+      inFlight = true;
       try {
         const { conversations: next } = await fetchConversations(authUser.uid);
         if (active) setConversations(next || {});
       } catch {
         if (active) setConversations({});
-      }
+      } finally { inFlight = false; }
     };
 
     load();
-    const timer = setInterval(load, 3000);
+    const timer = setInterval(load, 6_000);
     return () => {
       active = false;
       clearInterval(timer);
@@ -220,17 +235,20 @@ function App() {
     if (!authUser) return undefined;
 
     let active = true;
+    let inFlight = false;
     const load = async () => {
+      if (!active || inFlight || isPageHidden()) return;
+      inFlight = true;
       try {
         const { groups: next } = await fetchGroups(authUser.uid);
         if (active) setGroups(next || []);
       } catch {
         if (active) setGroups([]);
-      }
+      } finally { inFlight = false; }
     };
 
     load();
-    const timer = setInterval(load, 5000);
+    const timer = setInterval(load, 20_000);
     return () => {
       active = false;
       clearInterval(timer);
@@ -242,7 +260,10 @@ function App() {
     if (!authUser) return undefined;
 
     let active = true;
+    let inFlight = false;
     const load = async () => {
+      if (!active || inFlight || isPageHidden()) return;
+      inFlight = true;
       try {
         const { channels = [] } = await fetchChannels();
         if (!active) return;
@@ -252,11 +273,11 @@ function App() {
         if (!active) return;
         setFollowedChannels([]);
         setDiscoverChannels([]);
-      }
+      } finally { inFlight = false; }
     };
 
     load();
-    const timer = setInterval(load, 5000);
+    const timer = setInterval(load, 20_000);
     return () => {
       active = false;
       clearInterval(timer);
