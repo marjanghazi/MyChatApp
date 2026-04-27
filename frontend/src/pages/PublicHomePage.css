@@ -2263,3 +2263,96 @@
     display: inline;
   }
 }
+
+@media (max-width: 768px) {
+  .ph-landing-shell {
+    overflow-x: hidden;
+  }
+
+  .ph-nav-container,
+  .ph-hero-content,
+  .ph-highlights-container,
+  .ph-features-container,
+  .ph-about-container,
+  .ph-security-container,
+  .ph-architecture-container,
+  .ph-sdg-container,
+  .ph-research-container,
+  .ph-contact-container,
+  .ph-footer-content,
+  .ph-footer-bottom {
+    width: min(100%, 100%);
+    max-width: 100%;
+  }
+
+  .ph-typed-text,
+  .ph-hero-badge,
+  .ph-qkd-badge,
+  .ph-footer-status {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+@media (max-width: 480px) {
+  .ph-landing-actions .ph-ghost-btn,
+  .ph-landing-actions .ph-primary-btn {
+    display: none;
+  }
+
+  .ph-mobile-nav .ph-primary-btn {
+    display: inline-flex;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .ph-hero-typed {
+    max-width: 100%;
+  }
+
+  .ph-hero-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .ph-stat-item {
+    min-width: 0;
+  }
+
+  .ph-mobile-nav {
+    max-height: calc(100dvh - 70px);
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 360px) {
+  .ph-nav-container {
+    padding: 0.65rem 0.75rem;
+  }
+
+  .ph-brand-info h1 {
+    font-size: 14px;
+    letter-spacing: 1.2px;
+  }
+
+  .ph-brand-info p,
+  .ph-hero-typed,
+  .ph-typed-text {
+    font-size: 9px;
+  }
+
+  .ph-highlights-section,
+  .ph-features-section,
+  .ph-about-section,
+  .ph-security-section,
+  .ph-architecture-section,
+  .ph-sdg-section,
+  .ph-research-section,
+  .ph-contact-section,
+  .ph-cta-section,
+  .ph-footer {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
+}

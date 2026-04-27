@@ -1246,3 +1246,98 @@
     text-align: center;
   }
 }
+
+
+@media (max-width: 768px) {
+  .chat-window {
+    min-width: 0;
+  }
+
+  .qx-chat-actions {
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .qx-chat-toolbar {
+    gap: 8px;
+  }
+
+  .qx-chat-search-wrap {
+    min-width: 0;
+  }
+
+  .qx-msg-content {
+    max-width: 82%;
+  }
+
+  .qx-forward-panel {
+    max-width: min(96vw, 340px);
+  }
+
+  .qx-call-media {
+    overflow-x: hidden;
+  }
+
+  .qx-video-main {
+    height: min(40vh, 220px);
+  }
+}
+
+@media (max-width: 480px) {
+  .qx-chat-contact-avatar,
+  .qx-chat-contact-avatar img,
+  .qx-chat-contact-avatar span {
+    width: 36px;
+    height: 36px;
+  }
+
+  .qx-chat-contact-meta h3 {
+    font-size: 13px;
+  }
+
+  .qx-msg-content {
+    max-width: 90%;
+  }
+
+  .qx-bubble {
+    padding: 9px 10px;
+  }
+
+  .qx-file-card {
+    max-width: 100%;
+  }
+
+  .qx-emoji-picker {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .qx-call-controls > * {
+    flex: 1 1 auto;
+    min-width: 110px;
+  }
+}
+
+@media (max-width: 360px) {
+  .qx-chat-actions {
+    gap: 4px;
+  }
+
+  .qx-icon-btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  .qx-chat-search-wrap input {
+    font-size: 12px;
+  }
+
+  .qx-composer {
+    gap: 8px;
+  }
+
+  .qx-send-btn {
+    width: 38px;
+    height: 38px;
+  }
+}

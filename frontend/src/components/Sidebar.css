@@ -902,3 +902,56 @@
     max-width: 180px;
   }
 }
+
+
+@media (max-width: 768px) {
+  .wa-sidebar {
+    height: 100dvh;
+    max-width: calc(100vw - 28px);
+  }
+
+  .wa-chat-item,
+  .wa-list-item,
+  .wa-profile-btn {
+    min-width: 0;
+  }
+
+  .wa-chat-name,
+  .wa-chat-preview,
+  .wa-profile-name,
+  .wa-profile-status,
+  .wa-brand {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .wa-sidebar {
+    max-width: 100vw;
+    width: 100vw;
+  }
+
+  .wa-sidebar-header,
+  .wa-search-wrap,
+  .wa-list-wrap,
+  .wa-bottom-profile {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+@media (max-width: 360px) {
+  .wa-brand {
+    font-size: 16px;
+    letter-spacing: 1.5px;
+  }
+
+  .wa-header-icon,
+  .wa-nav-btn {
+    width: 34px;
+    height: 34px;
+    padding: 6px;
+  }
+}

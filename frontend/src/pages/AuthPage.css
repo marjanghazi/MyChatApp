@@ -879,3 +879,60 @@
   .auth-visual-panel { display: none; }
   .auth-shell { display: block; background: #fff; }
 }
+
+@media (max-width: 768px) {
+  .auth-shell,
+  .auth-form-panel {
+    overflow-x: hidden;
+  }
+
+  .auth-card {
+    width: min(100%, 520px);
+  }
+
+  .auth-section-heading,
+  .auth-security-badge,
+  .error-text {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 1.1rem;
+    border-radius: 16px;
+  }
+
+  .auth-tabs {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .tab-btn {
+    min-height: 44px;
+  }
+
+  .auth-security-badge {
+    letter-spacing: 0.3px;
+    line-height: 1.35;
+  }
+}
+
+@media (max-width: 360px) {
+  .auth-form-panel {
+    padding: 1.2rem 0.65rem;
+  }
+
+  .auth-section-heading h2 {
+    font-size: 20px;
+  }
+
+  .theme-switch-btn,
+  .back-home-btn,
+  .submit-btn {
+    font-size: 11px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
