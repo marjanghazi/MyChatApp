@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from firebase_admin import firestore
 
+from app.cache import invalidate_cache
 from app.errors import must
 from app.firebase_client import db_client
 
@@ -39,6 +40,7 @@ def create_group(body: dict):
     payload = {
         'name': str(name).strip(),
         'description': str(body.get('description', '')).strip(),
+        'photoURL': str(body.get('photoURL', '')).strip(),
         'memberIds': members,
         'admins': [creator_id],
         'createdBy': creator_id,
@@ -89,6 +91,29 @@ def follow_channel(channel_id: str, body: dict):
     if user_id not in existing:
         existing.append(user_id)
     ref.update({'followerIds': existing, 'updatedAt': datetime.now(timezone.utc)})
+    return {'ok': True}
+
+
+@router.patch('/groups/{group_id}/profile')
+def update_group_profile(group_id: str, body: dict):
+    requester_id = body.get('requesterId')
+    must(group_id, 'groupId')
+    must(requester_id, 'requesterId')
+
+    ref, data = get_group_or_404(group_id)
+    if requester_id not in (data.get('admins') or []):
+        raise HTTPException(status_code=403, detail='Only admins can update group profile.')
+
+    update_data: dict = {'updatedAt': datetime.now(timezone.utc)}
+    if body.get('name') is not None:
+        update_data['name'] = str(body.get('name')).strip()
+    if body.get('description') is not None:
+        update_data['description'] = str(body.get('description')).strip()
+    if body.get('photoURL') is not None:
+        update_data['photoURL'] = str(body.get('photoURL')).strip()
+
+    ref.update(update_data)
+    invalidate_cache(prefix='thread:groups:')
     return {'ok': True}
 
 

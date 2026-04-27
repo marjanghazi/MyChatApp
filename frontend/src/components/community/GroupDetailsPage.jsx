@@ -5,6 +5,8 @@ const GroupDetailsPage = ({
   authUser,
   usersById,
   contacts,
+  updatingProfile,
+  onUpdateGroupPhoto,
   onBack,
   onLeaveGroup,
   onToggleAdmin,
@@ -23,6 +25,23 @@ const GroupDetailsPage = ({
   return (
     <section className="qx-group-details-page">
       <div className="qx-group-details-header">
+        <div className="qx-group-avatar-wrap">
+          {selectedGroup.photoURL
+            ? <img className="qx-group-avatar" src={selectedGroup.photoURL} alt={selectedGroup.name} />
+            : <div className="qx-group-avatar qx-group-avatar--fallback">👥</div>
+          }
+          {isGroupAdmin && (
+            <label className="qx-group-avatar-edit">
+              {updatingProfile ? "Uploading…" : "Change DP"}
+              <input
+                type="file"
+                hidden
+                accept="image/*"
+                onChange={(event) => event.target.files?.[0] && onUpdateGroupPhoto?.(event.target.files[0])}
+              />
+            </label>
+          )}
+        </div>
         <button type="button" className="qx-btn qx-btn--secondary" onClick={onBack}>← Back to chat</button>
         <h2>{selectedGroup.name}</h2>
         <p>{(selectedGroup.memberIds || []).length} members</p>

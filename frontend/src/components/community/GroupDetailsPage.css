@@ -9,6 +9,38 @@
   margin: 10px 0 4px;
 }
 
+.qx-group-avatar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.qx-group-avatar {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
+.qx-group-avatar--fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-hover);
+  font-size: 28px;
+}
+
+.qx-group-avatar-edit {
+  font-size: 12px;
+  color: var(--accent-a);
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: var(--bg-card);
+}
+
 .qx-group-details-header p {
   margin: 0;
   color: var(--text-muted);

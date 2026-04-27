@@ -42,6 +42,10 @@ const ChatMessages = ({
       const isRead   = selectedUser ? (msg.readBy || []).includes(selectedUser.uid) : false;
       const isDelivered = selectedUser ? (msg.deliveredTo || []).includes(selectedUser.uid) : false;
       const senderName = msg.senderName || usersById.get(msg.senderId)?.displayName || "Member";
+      const shouldShowText = !!msg.text && !(
+        msg.type === "audio" &&
+        (msg.text === msg.fileName || /^voice-\d+\.(webm|ogg)$/i.test(msg.text || ""))
+      );
 
       return (
         <div key={msg.id}>
@@ -167,14 +171,20 @@ const ChatMessages = ({
                     </video>
                   )}
                   {msg.type === "audio" && msg.fileURL && (
-                    <div className="qx-audio-wrap">
+                    <div className={`qx-audio-wrap qx-audio-wrap--voice ${isMine ? "qx-audio-wrap--mine" : "qx-audio-wrap--theirs"}`}>
+                      <div className="qx-voice-wave" aria-hidden="true">
+                        {Array.from({ length: 22 }).map((_, barIndex) => (
+                          <span key={barIndex} className="qx-voice-wave-bar" />
+                        ))}
+                      </div>
                       <audio className="qx-msg-audio" controls preload="metadata">
                         <source src={msg.fileURL} type={msg.mimeType || "audio/webm"} />
                         Your browser does not support audio playback.
                       </audio>
+                      <div className="qx-voice-label">Voice note</div>
                     </div>
                   )}
-                  {!!msg.text && <p className="qx-msg-text">{msg.text}</p>}
+                  {shouldShowText && <p className="qx-msg-text">{msg.text}</p>}
                   <div className="qx-msg-meta">
                     <span className="qx-msg-time">{formatTime(msg.createdAt)}</span>
                     {msg.editedAt && <span className="qx-msg-edited">edited</span>}
