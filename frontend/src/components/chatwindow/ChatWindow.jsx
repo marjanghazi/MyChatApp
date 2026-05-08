@@ -44,6 +44,7 @@ import { uploadMedia } from "../../services/mediaService";
 const ChatWindow = ({
   authUser,
   profile,
+  appTheme,
   activeThreadType,
   selectedUser,
   selectedGroup,
@@ -54,6 +55,7 @@ const ChatWindow = ({
   onUpdateConversation,   // ({ type, channel }) => void  — used for channel follow toggle
   onOpenGroupDetails,
   onOpenMobileSidebar,
+  onToggleAppTheme,
   onLeaveGroup,
   onUpdateCallState,      // optional parent notification
   onSendCallSignal,       // optional parent notification
@@ -1051,6 +1053,8 @@ const ChatWindow = ({
         authUser={authUser}
         onOpenGroupDetails={onOpenGroupDetails}
         onOpenMobileSidebar={onOpenMobileSidebar}
+        appTheme={appTheme}
+        onToggleAppTheme={onToggleAppTheme}
         themes={THEMES}
       />
 

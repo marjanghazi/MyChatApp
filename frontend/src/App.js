@@ -98,6 +98,24 @@ function App() {
 
   // ── Persist theme ────────────────────────────────────────────────────────
   useEffect(() => { localStorage.setItem("appTheme", appTheme); }, [appTheme]);
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const darkClass = "app-theme-dark";
+    const lightClass = "app-theme-light";
+    const activeClass = `app-theme-${appTheme}`;
+    const inactiveClass = appTheme === "dark" ? lightClass : darkClass;
+
+    root.classList.remove(inactiveClass);
+    body.classList.remove(inactiveClass);
+    root.classList.add(activeClass);
+    body.classList.add(activeClass);
+
+    return () => {
+      root.classList.remove(activeClass);
+      body.classList.remove(activeClass);
+    };
+  }, [appTheme]);
 
   // ── Auth state ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -766,6 +784,7 @@ function App() {
         <ChatWindow
           authUser={authUser}
           profile={profile}
+          appTheme={appTheme}
           activeThreadType={activeThreadType}
           selectedUser={selectedUser}
           selectedGroup={selectedGroup}
@@ -776,6 +795,7 @@ function App() {
           onOpenGroupDetails={() => setShowGroupDetails(true)}
           onLeaveGroup={leaveSelectedGroup}
           onOpenMobileSidebar={() => setShowMobileSidebar(true)}
+          onToggleAppTheme={() => setAppTheme((p) => (p === "dark" ? "light" : "dark"))}
           // FIX: was missing — channel follow toggle inside ChatWindow header now works
           onUpdateConversation={({ type, channel }) => {
             if (type === "toggleFollow") toggleFollowChannel(channel);
