@@ -1,4 +1,6 @@
 
+import "./chatwindow.messages.css";
+
 const ChatMessages = ({
   visibleMessages,
   authUser,

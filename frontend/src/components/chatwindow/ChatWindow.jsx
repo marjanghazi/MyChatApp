@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./chatwindow.base.css";
 import { ICE_SERVERS, MAX_FILE_SIZE_BYTES, THEMES } from "./chatConstants";
 import {
@@ -340,7 +340,8 @@ const ChatWindow = ({
       alive = false;
       clearInterval(timer);
     };
-  }, [authUser?.uid, selectedConversationId]);
+  // eslint-disable-next-line no-use-before-define
+  }, [authUser?.uid, selectedConversationId, setCallState, stopCallMedia]);
 
   // ── Call helpers ──────────────────────────────────────────────────────────
   // ═════════════════════════════════════════════════════════════════════════
@@ -364,7 +365,7 @@ const ChatWindow = ({
     }
   };
 
-  const stopCallMedia = () => {
+  const stopCallMedia = useCallback(() => {
     // Reset ICE state
     hasRemoteDescRef.current        = false;
     pendingIceCandidatesRef.current = [];
@@ -385,20 +386,7 @@ const ChatWindow = ({
     setIsMuted(false);
     setIsVideoOff(false);
     if (onStopCallMedia) onStopCallMedia();
-  };
-
-  /** Save only the call log subcollection entry (no chat message). */
-  const saveCallLogOnly = async (callData) => {
-    if (!authUser?.uid || !selectedConversationId) return;
-    try {
-      await updateConversationMeta(selectedConversationId, {
-        participants: [authUser.uid, selectedUser?.uid],
-      });
-      await addConversationCallLog(selectedConversationId, callData);
-    } catch (e) {
-      console.error("saveCallLogOnly error:", e);
-    }
-  };
+  }, [onStopCallMedia]);
 
   /**
    * Save a call log entry AND a call message in the chat thread.
@@ -425,7 +413,7 @@ const ChatWindow = ({
     }
   };
 
-  const setCallState = async (nextCallState) => {
+  const setCallState = useCallback(async (nextCallState) => {
     if (!authUser?.uid || !selectedConversationId) return;
     try {
       await updateConversationMeta(selectedConversationId, { callState: nextCallState });
@@ -433,7 +421,7 @@ const ChatWindow = ({
     } catch (e) {
       console.error("setCallState error:", e);
     }
-  };
+  }, [authUser?.uid, onUpdateCallState, selectedConversationId]);
 
   const sendCallSignal = async (payload) => {
     if (!authUser?.uid || !selectedUser?.uid || !selectedConversationId) return;
