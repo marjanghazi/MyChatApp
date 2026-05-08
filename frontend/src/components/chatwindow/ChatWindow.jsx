@@ -1,9 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./chatwindow.base.css";
-import "./chatwindow.header.css";
-import "./chatwindow.messages.css";
-import "./chatwindow.composer.css";
-import "./chatwindow.overlays.css";
 import { ICE_SERVERS, MAX_FILE_SIZE_BYTES, THEMES } from "./chatConstants";
 import {
   conversationIdFor,

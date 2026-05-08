@@ -1,7 +1,0 @@
-.qx-reply-bar-wrap,
-.qx-typing-row,
-.qx-composer,
-.qx-emoji-picker,
-.qx-upload-progress {
-  /* Composer/reply/typing styles are defined in chatwindow.base.css; this file scopes ownership for composer styles. */
-}
