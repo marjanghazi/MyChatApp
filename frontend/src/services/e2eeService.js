@@ -141,15 +141,22 @@ export async function encryptTextForRecipient({ senderUid, recipientUid, text })
   return { ...encrypted, signature: toB64(signature) };
 }
 
-export async function decryptTextFromSender({ receiverUid, senderIdentityJwk, encrypted }) {
+export async function decryptTextFromSender({ receiverUid, senderIdentityJwk, senderSigningJwk, encrypted }) {
   must(encrypted, "Missing encrypted payload");
   must(encrypted.signature, "Missing message signature");
   must(encrypted.keyId, "Missing signer key");
   must(encrypted.ciphertext && encrypted.nonce, "Invalid encrypted payload");
 
+  const claimedSigningJwk = JSON.parse(atob(encrypted.keyId));
+  if (senderSigningJwk) {
+    const trusted = JSON.stringify(senderSigningJwk);
+    const claimed = JSON.stringify(claimedSigningJwk);
+    if (trusted !== claimed) throw new Error("Signer key does not match trusted sender bundle");
+  }
+
   const verifyKey = await crypto.subtle.importKey(
     "jwk",
-    JSON.parse(atob(encrypted.keyId)),
+    claimedSigningJwk,
     { name: "ECDSA", namedCurve: CURVE },
     false,
     ["verify"]

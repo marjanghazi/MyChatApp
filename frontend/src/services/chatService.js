@@ -54,14 +54,19 @@ export const fetchThreadMessages = async (threadType, threadId, uid) => {
       if (!senderId) return message;
       if (!senderKeyCache.has(senderId)) {
         const bundleResult = await apiRequest(`/api/e2ee/keys/${encodeURIComponent(senderId)}`);
-        senderKeyCache.set(senderId, (bundleResult?.bundles || [])[0]?.identityKey || null);
+        const bundle = (bundleResult?.bundles || [])[0] || null;
+        senderKeyCache.set(senderId, {
+          identityKey: bundle?.identityKey || null,
+          signingKey: bundle?.signedPreKeySignature || null,
+        });
       }
-      const senderKey = senderKeyCache.get(senderId);
-      if (!senderKey) return message;
+      const senderKeys = senderKeyCache.get(senderId);
+      if (!senderKeys?.identityKey) return message;
       try {
         const text = await decryptTextFromSender({
           receiverUid: uid,
-          senderIdentityJwk: JSON.parse(senderKey),
+          senderIdentityJwk: JSON.parse(senderKeys.identityKey),
+          senderSigningJwk: senderKeys.signingKey ? JSON.parse(senderKeys.signingKey) : null,
           encrypted: message.encrypted,
         });
         return { ...message, text };
