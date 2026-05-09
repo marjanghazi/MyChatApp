@@ -53,14 +53,25 @@ export async function encryptTextForRecipient({ senderUid, recipientUid, text })
   const bundles = await apiRequest(`/api/e2ee/keys/${encodeURIComponent(recipientUid)}`);
   const recipient = (bundles?.bundles || [])[0];
   if (!recipient?.identityKey) throw new Error("Recipient key bundle missing");
+  const { publicJwk } = await ensureIdentity(senderUid);
   const key = await deriveSharedAesKey(senderUid, JSON.parse(recipient.identityKey));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(text || ""));
-  return { algorithm: ALGO, version: 1, ciphertext: toB64(ciphertext), nonce: toB64(iv) };
+  return {
+    algorithm: ALGO,
+    version: 1,
+    ciphertext: toB64(ciphertext),
+    nonce: toB64(iv),
+    ephemeralPubKey: btoa(JSON.stringify(publicJwk)),
+    senderDeviceId: "web-default",
+  };
 }
 
 export async function decryptTextFromSender({ receiverUid, senderIdentityJwk, encrypted }) {
-  const key = await deriveSharedAesKey(receiverUid, senderIdentityJwk);
+  const senderJwk = encrypted?.ephemeralPubKey
+    ? JSON.parse(atob(encrypted.ephemeralPubKey))
+    : senderIdentityJwk;
+  const key = await deriveSharedAesKey(receiverUid, senderJwk);
   const plaintext = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: fromB64(encrypted.nonce) },
     key,
