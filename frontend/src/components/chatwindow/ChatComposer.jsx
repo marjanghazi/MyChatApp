@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
+import "./ChatComposer.css";
 import VoiceRecorderButton from "./voice/VoiceRecorderButton";
 import AttachmentPickerMenu from "./media/AttachmentPickerMenu";
 import MediaPreviewOverlay from "./media/MediaPreviewOverlay";
