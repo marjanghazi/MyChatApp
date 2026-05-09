@@ -23,9 +23,27 @@ async function ensureIdentity(uid) {
   return { privateJwk, publicJwk };
 }
 
+async function ensureSigningIdentity(uid) {
+  const privKeyRef = `e2ee:sign:priv:${uid}`;
+  const pubKeyRef = `e2ee:sign:pub:${uid}`;
+  const cachedPriv = localStorage.getItem(privKeyRef);
+  const cachedPub = localStorage.getItem(pubKeyRef);
+  if (cachedPriv && cachedPub) {
+    return { privateJwk: JSON.parse(cachedPriv), publicJwk: JSON.parse(cachedPub) };
+  }
+
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: CURVE }, true, ["sign", "verify"]);
+  const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
+  const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+  localStorage.setItem(privKeyRef, JSON.stringify(privateJwk));
+  localStorage.setItem(pubKeyRef, JSON.stringify(publicJwk));
+  return { privateJwk, publicJwk };
+}
+
 export async function publishSelfKeyBundle(uid) {
   if (!uid) return;
   const { publicJwk } = await ensureIdentity(uid);
+  const { publicJwk: signPublicJwk } = await ensureSigningIdentity(uid);
   await apiRequest("/api/e2ee/keys/publish", {
     method: "POST",
     body: JSON.stringify({
@@ -35,7 +53,7 @@ export async function publishSelfKeyBundle(uid) {
         algorithm: ALGO,
         identityKey: JSON.stringify(publicJwk),
         signedPreKey: JSON.stringify(publicJwk),
-        signedPreKeySignature: "web-self-signed",
+        signedPreKeySignature: JSON.stringify(signPublicJwk),
         oneTimePreKeys: [],
       },
     }),
@@ -57,6 +75,10 @@ export async function encryptTextForRecipient({ senderUid, recipientUid, text })
   const key = await deriveSharedAesKey(senderUid, JSON.parse(recipient.identityKey));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(text || ""));
+  const { privateJwk: signPrivateJwk, publicJwk: signPublicJwk } = await ensureSigningIdentity(senderUid);
+  const signingKey = await crypto.subtle.importKey("jwk", signPrivateJwk, { name: "ECDSA", namedCurve: CURVE }, false, ["sign"]);
+  const signInput = new TextEncoder().encode(`${toB64(ciphertext)}.${toB64(iv)}.${ALGO}.1`);
+  const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, signingKey, signInput);
   return {
     algorithm: ALGO,
     version: 1,
@@ -64,6 +86,8 @@ export async function encryptTextForRecipient({ senderUid, recipientUid, text })
     nonce: toB64(iv),
     ephemeralPubKey: btoa(JSON.stringify(publicJwk)),
     senderDeviceId: "web-default",
+    signature: toB64(signature),
+    keyId: btoa(JSON.stringify(signPublicJwk)),
   };
 }
 
@@ -79,3 +103,22 @@ export async function decryptTextFromSender({ receiverUid, senderIdentityJwk, en
   );
   return new TextDecoder().decode(plaintext);
 }
+  if (encrypted?.signature && encrypted?.keyId) {
+    const verifyKey = await crypto.subtle.importKey(
+      "jwk",
+      JSON.parse(atob(encrypted.keyId)),
+      { name: "ECDSA", namedCurve: CURVE },
+      false,
+      ["verify"]
+    );
+    const signInput = new TextEncoder().encode(
+      `${encrypted.ciphertext}.${encrypted.nonce}.${encrypted.algorithm}.${encrypted.version}`
+    );
+    const valid = await crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      verifyKey,
+      fromB64(encrypted.signature),
+      signInput
+    );
+    if (!valid) throw new Error("Invalid message signature");
+  }
