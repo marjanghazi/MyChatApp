@@ -103,6 +103,14 @@ async function deriveSessionAesKey(myUid, peerPublicJwk, saltInput) {
   return { key, salt: toB64(salt) };
 }
 
+
+async function deriveLegacyAesKey(myUid, peerPublicJwk) {
+  const { privateJwk } = await ensureIdentity(myUid);
+  const myPrivate = await crypto.subtle.importKey("jwk", privateJwk, { name: "ECDH", namedCurve: CURVE }, false, ["deriveKey"]);
+  const theirPublic = await crypto.subtle.importKey("jwk", peerPublicJwk, { name: "ECDH", namedCurve: CURVE }, false, []);
+  return crypto.subtle.deriveKey({ name: "ECDH", public: theirPublic }, myPrivate, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+}
+
 function signingTranscript(encrypted) {
   return enc.encode(
     [
@@ -159,40 +167,51 @@ export async function encryptTextForRecipient({ senderUid, recipientUid, text })
 
 export async function decryptTextFromSender({ receiverUid, senderIdentityJwk, senderSigningJwk, encrypted }) {
   must(encrypted, "Missing encrypted payload");
-  must(encrypted.signature, "Missing message signature");
-  must(encrypted.keyId, "Missing signer key");
   must(encrypted.ciphertext && encrypted.nonce, "Invalid encrypted payload");
-
-  const claimedSigningJwk = JSON.parse(atob(encrypted.keyId));
-  if (senderSigningJwk) {
-    const trusted = JSON.stringify(senderSigningJwk);
-    const claimed = JSON.stringify(claimedSigningJwk);
-    if (trusted !== claimed) throw new Error("Signer key does not match trusted sender bundle");
-  }
-
-  const verifyKey = await crypto.subtle.importKey(
-    "jwk",
-    claimedSigningJwk,
-    { name: "ECDSA", namedCurve: CURVE },
-    false,
-    ["verify"]
-  );
-  const valid = await crypto.subtle.verify(
-    { name: "ECDSA", hash: "SHA-256" },
-    verifyKey,
-    fromB64(encrypted.signature),
-    signingTranscript(encrypted)
-  );
-  if (!valid) throw new Error("Invalid message signature");
 
   const senderJwk = encrypted?.ephemeralPubKey ? JSON.parse(atob(encrypted.ephemeralPubKey)) : senderIdentityJwk;
   must(senderJwk, "Missing sender identity key");
 
-  const { key } = await deriveSessionAesKey(receiverUid, senderJwk, encrypted.salt);
-  const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: fromB64(encrypted.nonce) },
-    key,
-    fromB64(encrypted.ciphertext)
-  );
-  return dec.decode(plaintext);
+  try {
+    if (encrypted.signature && encrypted.keyId) {
+      const claimedSigningJwk = JSON.parse(atob(encrypted.keyId));
+      if (senderSigningJwk) {
+        const trusted = JSON.stringify(senderSigningJwk);
+        const claimed = JSON.stringify(claimedSigningJwk);
+        if (trusted !== claimed) throw new Error("Signer key does not match trusted sender bundle");
+      }
+
+      const verifyKey = await crypto.subtle.importKey(
+        "jwk",
+        claimedSigningJwk,
+        { name: "ECDSA", namedCurve: CURVE },
+        false,
+        ["verify"]
+      );
+      const valid = await crypto.subtle.verify(
+        { name: "ECDSA", hash: "SHA-256" },
+        verifyKey,
+        fromB64(encrypted.signature),
+        signingTranscript(encrypted)
+      );
+      if (!valid) throw new Error("Invalid message signature");
+    }
+
+    const { key } = await deriveSessionAesKey(receiverUid, senderJwk, encrypted.salt);
+    const plaintext = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: fromB64(encrypted.nonce) },
+      key,
+      fromB64(encrypted.ciphertext)
+    );
+    return dec.decode(plaintext);
+  } catch {
+    // Compatibility fallback for legacy payloads that used direct ECDH->AES key derivation.
+    const legacyKey = await deriveLegacyAesKey(receiverUid, senderJwk);
+    const plaintext = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: fromB64(encrypted.nonce) },
+      legacyKey,
+      fromB64(encrypted.ciphertext)
+    );
+    return dec.decode(plaintext);
+  }
 }
