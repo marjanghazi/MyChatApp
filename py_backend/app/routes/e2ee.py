@@ -27,8 +27,9 @@ def publish_keys(body: dict):
 
         raise HTTPException(status_code=400, detail='keyBundle.oneTimePreKeys must be a list')
 
-    algorithm = key_bundle.get('algorithm') or 'X25519+AES-256-GCM'
-    if algorithm not in ALLOWED_ENCRYPTION_ALGORITHMS:
+    suite = key_bundle.get('suite') or {}
+    algorithm = key_bundle.get('algorithm') or (f"{suite.get('kem')}+{suite.get('aead')}" if suite else 'X25519+AES-256-GCM')
+    if algorithm not in ALLOWED_ENCRYPTION_ALGORITHMS and algorithm != 'ECDH-P256+AES-256-GCM':
         from fastapi import HTTPException
 
         raise HTTPException(status_code=400, detail='Unsupported key bundle algorithm')
@@ -38,7 +39,8 @@ def publish_keys(body: dict):
         {
             'uid': uid,
             'deviceId': device_id,
-            'algorithm': algorithm,
+            'algorithm': 'P256+AES-256-GCM' if algorithm == 'ECDH-P256+AES-256-GCM' else algorithm,
+            'suite': suite or None,
             'identityKey': key_bundle.get('identityKey'),
             'signedPreKey': key_bundle.get('signedPreKey'),
             'signedPreKeySignature': key_bundle.get('signedPreKeySignature'),
