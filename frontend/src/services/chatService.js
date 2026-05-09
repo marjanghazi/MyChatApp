@@ -57,9 +57,9 @@ export const fetchThreadMessages = async (threadType, threadId, uid) => {
       if (!senderId) return message;
       if (!senderKeyCache.has(senderId)) {
         const bundleResult = await apiRequest(`/api/e2ee/keys/${encodeURIComponent(senderId)}`);
-        const bundle = (bundleResult?.bundles || []).find((entry) => entry?.identityKey) || null;
+        const bundle = (bundleResult?.bundles || []).find((entry) => entry?.identityKey || entry?.signedPreKey) || null;
         senderKeyCache.set(senderId, {
-          identityKey: bundle?.identityKey || null,
+          identityKey: bundle?.identityKey || bundle?.signedPreKey || null,
           signingKey: bundle?.signingPublicKey || null,
         });
       }

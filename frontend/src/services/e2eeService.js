@@ -120,14 +120,15 @@ function signingTranscript(encrypted) {
 
 export async function encryptTextForRecipient({ senderUid, recipientUid, text }) {
   const bundles = await apiRequest(`/api/e2ee/keys/${encodeURIComponent(recipientUid)}`);
-  const recipient = (bundles?.bundles || []).find((bundle) => bundle?.identityKey);
+  const recipient = (bundles?.bundles || []).find((bundle) => bundle?.identityKey || bundle?.signedPreKey);
   must(
-    recipient?.identityKey,
-    "Recipient key bundle missing. Ask recipient to open app once so their E2EE keys can be published."
+    recipient?.identityKey || recipient?.signedPreKey,
+    "Recipient key bundle missing. Recipient must publish key bundle at least once."
   );
 
+  const recipientDhKey = recipient.identityKey || recipient.signedPreKey;
   const { publicJwk } = await ensureIdentity(senderUid);
-  const { key, salt } = await deriveSessionAesKey(senderUid, JSON.parse(recipient.identityKey));
+  const { key, salt } = await deriveSessionAesKey(senderUid, JSON.parse(recipientDhKey));
   const nonce = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, key, enc.encode(text || ""));
 
