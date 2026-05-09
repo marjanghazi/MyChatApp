@@ -1,5 +1,5 @@
 
-import "./chatwindow.messages.css";
+import "./ChatMessages.styles.css";
 
 const ChatMessages = ({
   visibleMessages,
