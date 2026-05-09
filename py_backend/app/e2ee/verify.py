@@ -5,7 +5,7 @@ import json
 from typing import Any
 
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, utils
 
 
 def _b64decode(data: str) -> bytes:
@@ -50,8 +50,18 @@ def verify_envelope_signature(encrypted: dict[str, Any], trusted_signing_jwk_jso
     signature = _b64decode(encrypted["signature"])
     message = _signing_transcript(encrypted)
     try:
-        public_key.verify(signature, message, ec.ECDSA(hashes.SHA256()))
-        return True
+        try:
+            public_key.verify(signature, message, ec.ECDSA(hashes.SHA256()))
+            return True
+        except Exception:
+            # WebCrypto ECDSA may return raw P1363 (r||s) instead of DER.
+            if len(signature) == 64:
+                r = int.from_bytes(signature[:32], "big")
+                s = int.from_bytes(signature[32:], "big")
+                der_sig = utils.encode_dss_signature(r, s)
+                public_key.verify(der_sig, message, ec.ECDSA(hashes.SHA256()))
+                return True
+            raise
     except Exception:
         return False
 
@@ -61,7 +71,17 @@ def verify_signed_prekey(signing_public_jwk_json: str, signed_prekey_payload: st
         trusted_key = json.loads(signing_public_jwk_json)
         public_key = _jwk_to_public_key(trusted_key)
         signature = _b64decode(signature_b64)
-        public_key.verify(signature, signed_prekey_payload.encode("utf-8"), ec.ECDSA(hashes.SHA256()))
-        return True
+        message = signed_prekey_payload.encode("utf-8")
+        try:
+            public_key.verify(signature, message, ec.ECDSA(hashes.SHA256()))
+            return True
+        except Exception:
+            if len(signature) == 64:
+                r = int.from_bytes(signature[:32], "big")
+                s = int.from_bytes(signature[32:], "big")
+                der_sig = utils.encode_dss_signature(r, s)
+                public_key.verify(der_sig, message, ec.ECDSA(hashes.SHA256()))
+                return True
+            raise
     except Exception:
         return False
