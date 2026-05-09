@@ -92,17 +92,6 @@ export async function encryptTextForRecipient({ senderUid, recipientUid, text })
 }
 
 export async function decryptTextFromSender({ receiverUid, senderIdentityJwk, encrypted }) {
-  const senderJwk = encrypted?.ephemeralPubKey
-    ? JSON.parse(atob(encrypted.ephemeralPubKey))
-    : senderIdentityJwk;
-  const key = await deriveSharedAesKey(receiverUid, senderJwk);
-  const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: fromB64(encrypted.nonce) },
-    key,
-    fromB64(encrypted.ciphertext)
-  );
-  return new TextDecoder().decode(plaintext);
-}
   if (encrypted?.signature && encrypted?.keyId) {
     const verifyKey = await crypto.subtle.importKey(
       "jwk",
@@ -122,3 +111,15 @@ export async function decryptTextFromSender({ receiverUid, senderIdentityJwk, en
     );
     if (!valid) throw new Error("Invalid message signature");
   }
+
+  const senderJwk = encrypted?.ephemeralPubKey
+    ? JSON.parse(atob(encrypted.ephemeralPubKey))
+    : senderIdentityJwk;
+  const key = await deriveSharedAesKey(receiverUid, senderJwk);
+  const plaintext = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: fromB64(encrypted.nonce) },
+    key,
+    fromB64(encrypted.ciphertext)
+  );
+  return new TextDecoder().decode(plaintext);
+}
