@@ -9,6 +9,7 @@ from google.api_core.exceptions import FailedPrecondition
 
 from app.cache import cached, invalidate_cache
 from app.e2ee import sanitize_encrypted_payload
+from app.e2ee.verify import verify_envelope_signature
 from app.errors import must, must_thread_type
 from app.firebase_client import db_client
 
@@ -62,6 +63,11 @@ def assert_sender_bundle_binding(actor_uid: str, encrypted_payload: dict):
         from fastapi import HTTPException
 
         raise HTTPException(status_code=400, detail='Encrypted signer key does not match sender bundle')
+
+    if not verify_envelope_signature(encrypted_payload, bundle.get('signedPreKeySignature')):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail='Invalid encrypted message signature')
 
     suite = bundle.get('suite') or {}
     if suite:
