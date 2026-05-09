@@ -11,6 +11,7 @@ from app.firebase_client import init_firebase
 from app.routes.auth import router as auth_router
 from app.routes.chat import router as chat_router
 from app.routes.community import router as community_router
+from app.routes.e2ee import router as e2ee_router
 from app.routes.media import router as media_router
 from app.routes.thread import router as thread_router
 from app.routes.users import router as users_router
@@ -46,6 +47,7 @@ app.include_router(users_router)
 app.include_router(thread_router)
 app.include_router(media_router)
 app.include_router(chat_router)
+app.include_router(e2ee_router)
 
 
 @app.exception_handler(StarletteHTTPException)

@@ -8,6 +8,7 @@ from firebase_admin import firestore
 from google.api_core.exceptions import FailedPrecondition
 
 from app.cache import cached, invalidate_cache
+from app.e2ee import sanitize_encrypted_payload
 from app.errors import must, must_thread_type
 from app.firebase_client import db_client
 
@@ -36,10 +37,7 @@ def sanitize_patch(patch: dict[str, Any]) -> dict[str, Any]:
 
 
 def message_preview(payload: dict[str, Any]) -> str:
-    if payload.get('type') == 'text':
-        return payload.get('text') or ''
-    icon = '🎤' if payload.get('type') == 'audio' else '🎬' if payload.get('type') == 'video' else '📎'
-    return f"{icon} {payload.get('fileName') or 'attachment'}"
+    return '🔐 Encrypted message'
 
 
 def to_docs(snapshot):
@@ -67,6 +65,7 @@ def send_message(body: dict):
     thread_id = body.get('threadId')
     is_target_online = bool(body.get('isTargetOnline'))
     payload = body.get('payload') or {}
+    encrypted_payload = sanitize_encrypted_payload(payload)
     reply_to = body.get('replyTo')
 
     must_thread_type(thread_type)
@@ -78,7 +77,8 @@ def send_message(body: dict):
         must(thread_id, 'threadId')
         conversation_ref = db.collection('conversations').document(thread_id)
         final_payload = {
-            **payload,
+            'encrypted': encrypted_payload,
+            'type': payload.get('type') or 'text',
             **({'replyTo': reply_to} if reply_to else {}),
             'senderId': actor_uid,
             'receiverId': target_uid,
@@ -93,7 +93,7 @@ def send_message(body: dict):
                 'participants': [actor_uid, target_uid],
                 'participantPhones': [actor_phone or '', target_phone or ''],
                 'lastMessage': message_preview(payload),
-                'lastMessageType': payload.get('type'),
+                'lastMessageType': 'encrypted',
                 'lastMessageSender': actor_uid,
                 'lastMessageStatus': 'delivered' if is_target_online else 'sent',
                 'lastMessageAt': firestore.SERVER_TIMESTAMP,
@@ -115,7 +115,7 @@ def send_message(body: dict):
         must(thread_id, 'threadId')
         group_ref = db.collection('groups').document(thread_id)
         final_payload = {
-            'text': payload.get('text') or '',
+            'encrypted': encrypted_payload,
             'type': payload.get('type') or 'text',
             'senderId': actor_uid,
             'senderName': actor_name,
@@ -128,7 +128,8 @@ def send_message(body: dict):
         batch.set(
             group_ref,
             {
-                'lastMessage': final_payload['text'],
+                'lastMessage': message_preview(payload),
+                'lastMessageType': 'encrypted',
                 'lastMessageAt': firestore.SERVER_TIMESTAMP,
                 'updatedAt': firestore.SERVER_TIMESTAMP,
             },
@@ -147,7 +148,7 @@ def send_message(body: dict):
         batch.set(
             post_ref,
             {
-                'text': payload.get('text') or '',
+                'encrypted': encrypted_payload,
                 'type': 'post',
                 'senderId': actor_uid,
                 'senderName': actor_name,
@@ -157,7 +158,7 @@ def send_message(body: dict):
         batch.set(
             channel_ref,
             {
-                'lastPost': payload.get('text') or '',
+                'lastPost': '🔐 Encrypted post',
                 'lastPostAt': firestore.SERVER_TIMESTAMP,
                 'updatedAt': firestore.SERVER_TIMESTAMP,
             },
@@ -176,15 +177,15 @@ def edit_message(body: dict):
     thread_type = body.get('threadType')
     thread_id = body.get('threadId')
     message_id = body.get('messageId')
-    text = body.get('text')
+    payload = body.get('payload') or {}
     must_thread_type(thread_type)
     must(thread_id, 'threadId')
     must(message_id, 'messageId')
-    must(text, 'text')
+    encrypted_payload = sanitize_encrypted_payload(payload)
 
     ref = get_message_ref(thread_type, thread_id, message_id)
     must(ref, 'messageRef')
-    ref.update({'text': text, 'editedAt': firestore.SERVER_TIMESTAMP})
+    ref.update({'encrypted': encrypted_payload, 'editedAt': firestore.SERVER_TIMESTAMP})
     invalidate_cache(prefix=f'chat:messages:{thread_type}:{thread_id}:')
     return {'ok': True}
 
@@ -220,7 +221,7 @@ def delete_for_everyone(body: dict):
     must(ref, 'messageRef')
     ref.update(
         {
-            'text': '🚫 This message was deleted.',
+            'encrypted': None,
             'deletedForEveryone': True,
             'deletedAt': firestore.SERVER_TIMESTAMP,
             'fileURL': None,
@@ -397,9 +398,14 @@ def add_call_log(body: dict):
 def add_conversation_message(body: dict):
     conversation_id = body.get('conversationId')
     message = body.get('message') or {}
+    encrypted_payload = sanitize_encrypted_payload(message)
     must(conversation_id, 'conversationId')
     db_client().collection('conversations').document(conversation_id).collection('messages').add(
-        {**message, 'createdAt': firestore.SERVER_TIMESTAMP}
+        {
+            **{k: v for k, v in message.items() if k != 'encrypted'},
+            'encrypted': encrypted_payload,
+            'createdAt': firestore.SERVER_TIMESTAMP,
+        }
     )
     invalidate_cache(prefix=f'chat:messages:direct:{conversation_id}:')
     invalidate_cache(prefix='thread:conversations:')
