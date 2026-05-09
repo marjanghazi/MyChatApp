@@ -43,6 +43,9 @@ export const toggleChatMessageFlag = (body) =>
   });
 
 export const fetchThreadMessages = async (threadType, threadId, uid) => {
+  if (uid) {
+    await publishSelfKeyBundle(uid);
+  }
   const response = await apiRequest(`/api/chat/messages?threadType=${encodeURIComponent(threadType)}&threadId=${encodeURIComponent(threadId)}&uid=${encodeURIComponent(uid || "")}`);
   const messages = response?.messages || [];
   const senderKeyCache = new Map();
@@ -54,7 +57,7 @@ export const fetchThreadMessages = async (threadType, threadId, uid) => {
       if (!senderId) return message;
       if (!senderKeyCache.has(senderId)) {
         const bundleResult = await apiRequest(`/api/e2ee/keys/${encodeURIComponent(senderId)}`);
-        const bundle = (bundleResult?.bundles || [])[0] || null;
+        const bundle = (bundleResult?.bundles || []).find((entry) => entry?.identityKey) || null;
         senderKeyCache.set(senderId, {
           identityKey: bundle?.identityKey || null,
           signingKey: bundle?.signingPublicKey || null,
