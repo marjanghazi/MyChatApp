@@ -1,10 +1,22 @@
 import { apiRequest } from "./apiClient";
+import { decryptTextFromSender, encryptTextForRecipient, publishSelfKeyBundle } from "./e2eeService";
 
-export const sendChatMessage = (body) =>
-  apiRequest("/api/chat/messages/send", {
+export const sendChatMessage = async (body) => {
+  const payload = body?.payload || {};
+  if (payload?.text && body?.actorUid && body?.targetUid) {
+    await publishSelfKeyBundle(body.actorUid);
+    const encrypted = await encryptTextForRecipient({
+      senderUid: body.actorUid,
+      recipientUid: body.targetUid,
+      text: payload.text,
+    });
+    body = { ...body, payload: { ...payload, type: payload.type || "text", encrypted, text: undefined } };
+  }
+  return apiRequest("/api/chat/messages/send", {
     method: "POST",
     body: JSON.stringify(body),
   });
+};
 
 export const editChatMessage = (body) =>
   apiRequest("/api/chat/messages/edit", {
@@ -30,8 +42,36 @@ export const toggleChatMessageFlag = (body) =>
     body: JSON.stringify(body),
   });
 
-export const fetchThreadMessages = (threadType, threadId, uid) =>
-  apiRequest(`/api/chat/messages?threadType=${encodeURIComponent(threadType)}&threadId=${encodeURIComponent(threadId)}&uid=${encodeURIComponent(uid || "")}`);
+export const fetchThreadMessages = async (threadType, threadId, uid) => {
+  const response = await apiRequest(`/api/chat/messages?threadType=${encodeURIComponent(threadType)}&threadId=${encodeURIComponent(threadId)}&uid=${encodeURIComponent(uid || "")}`);
+  const messages = response?.messages || [];
+  const senderKeyCache = new Map();
+
+  const hydrated = await Promise.all(
+    messages.map(async (message) => {
+      if (!message?.encrypted || !uid) return message;
+      const senderId = message.senderId;
+      if (!senderId) return message;
+      if (!senderKeyCache.has(senderId)) {
+        const bundleResult = await apiRequest(`/api/e2ee/keys/${encodeURIComponent(senderId)}`);
+        senderKeyCache.set(senderId, (bundleResult?.bundles || [])[0]?.identityKey || null);
+      }
+      const senderKey = senderKeyCache.get(senderId);
+      if (!senderKey) return message;
+      try {
+        const text = await decryptTextFromSender({
+          receiverUid: uid,
+          senderIdentityJwk: JSON.parse(senderKey),
+          encrypted: message.encrypted,
+        });
+        return { ...message, text };
+      } catch {
+        return { ...message, text: "[Unable to decrypt]" };
+      }
+    })
+  );
+  return { ...response, messages: hydrated };
+};
 
 export const fetchCallLogs = (conversationId) =>
   apiRequest(`/api/chat/call-logs?conversationId=${encodeURIComponent(conversationId)}`);

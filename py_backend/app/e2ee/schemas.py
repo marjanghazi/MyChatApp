@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 REQUIRED_ENCRYPTED_FIELDS = ('ciphertext', 'nonce', 'algorithm', 'version')
 OPTIONAL_ENCRYPTED_FIELDS = ('aad', 'senderDeviceId', 'keyId', 'ephemeralPubKey', 'signature')
-ALLOWED_ENCRYPTION_ALGORITHMS = {'X25519+AES-256-GCM'}
+ALLOWED_ENCRYPTION_ALGORITHMS = {'X25519+AES-256-GCM', 'P256+AES-256-GCM'}
 
 
 def sanitize_encrypted_payload(payload: dict[str, Any]) -> dict[str, Any]:
