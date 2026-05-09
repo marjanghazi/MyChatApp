@@ -54,3 +54,14 @@ def verify_envelope_signature(encrypted: dict[str, Any], trusted_signing_jwk_jso
         return True
     except Exception:
         return False
+
+
+def verify_signed_prekey(signing_public_jwk_json: str, signed_prekey_payload: str, signature_b64: str) -> bool:
+    try:
+        trusted_key = json.loads(signing_public_jwk_json)
+        public_key = _jwk_to_public_key(trusted_key)
+        signature = _b64decode(signature_b64)
+        public_key.verify(signature, signed_prekey_payload.encode("utf-8"), ec.ECDSA(hashes.SHA256()))
+        return True
+    except Exception:
+        return False

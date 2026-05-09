@@ -58,7 +58,13 @@ async function ensureSigningIdentity(uid) {
 export async function publishSelfKeyBundle(uid) {
   if (!uid) return;
   const { publicJwk } = await ensureIdentity(uid);
-  const { publicJwk: signPublicJwk } = await ensureSigningIdentity(uid);
+  const { privateJwk: signPrivateJwk, publicJwk: signPublicJwk } = await ensureSigningIdentity(uid);
+  const signingKey = await crypto.subtle.importKey("jwk", signPrivateJwk, { name: "ECDSA", namedCurve: CURVE }, false, ["sign"]);
+  const signedPreKeySignature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    signingKey,
+    enc.encode(JSON.stringify(publicJwk))
+  );
   await apiRequest("/api/e2ee/keys/publish", {
     method: "POST",
     body: JSON.stringify({
@@ -68,7 +74,8 @@ export async function publishSelfKeyBundle(uid) {
         suite: SUITE,
         identityKey: JSON.stringify(publicJwk),
         signedPreKey: JSON.stringify(publicJwk),
-        signedPreKeySignature: JSON.stringify(signPublicJwk),
+        signingPublicKey: JSON.stringify(signPublicJwk),
+        signedPreKeySignature: toB64(signedPreKeySignature),
         oneTimePreKeys: [],
       },
     }),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 from datetime import datetime, timezone
+import base64
 
 from fastapi import APIRouter
 from firebase_admin import firestore
@@ -59,12 +60,13 @@ def assert_sender_bundle_binding(actor_uid: str, encrypted_payload: dict):
 
         raise HTTPException(status_code=400, detail='Missing sender key bundle for device')
 
-    if encrypted_payload.get('keyId') != bundle.get('signedPreKeySignature'):
+    expected_key_id = base64.b64encode((bundle.get('signingPublicKey') or '').encode('utf-8')).decode('utf-8')
+    if encrypted_payload.get('keyId') != expected_key_id:
         from fastapi import HTTPException
 
         raise HTTPException(status_code=400, detail='Encrypted signer key does not match sender bundle')
 
-    if not verify_envelope_signature(encrypted_payload, bundle.get('signedPreKeySignature')):
+    if not verify_envelope_signature(encrypted_payload, bundle.get('signingPublicKey')):
         from fastapi import HTTPException
 
         raise HTTPException(status_code=400, detail='Invalid encrypted message signature')

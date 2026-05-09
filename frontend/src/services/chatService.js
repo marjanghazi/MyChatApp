@@ -57,7 +57,7 @@ export const fetchThreadMessages = async (threadType, threadId, uid) => {
         const bundle = (bundleResult?.bundles || [])[0] || null;
         senderKeyCache.set(senderId, {
           identityKey: bundle?.identityKey || null,
-          signingKey: bundle?.signedPreKeySignature || null,
+          signingKey: bundle?.signingPublicKey || null,
         });
       }
       const senderKeys = senderKeyCache.get(senderId);
