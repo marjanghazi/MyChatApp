@@ -75,6 +75,9 @@ python3 scripts/compare_api_surface.py
 - `POST /api/chat/conversations/messages`
 - `POST /api/chat/conversations/signals`
 - `POST /api/chat/conversations/clear`
+- `POST /api/e2ee/keys/publish`
+- `GET /api/e2ee/keys/{uid}`
+- `POST /api/e2ee/sessions/upsert`
 
 ## Notes
 - Set `REACT_APP_API_BASE_URL` in frontend to this backend URL when testing.
@@ -91,3 +94,13 @@ This matches backend env precedence so Firebase Admin credentials are resolved c
 
 ## Firestore index note
 If `/api/chat/signals` is slow or returns a Firestore index error, deploy indexes from `firebase/firestore.indexes.json` to your Firebase project. The backend now has a fallback query for missing signal index, but creating the index is recommended for best performance.
+
+## E2EE architecture notes
+- `app/e2ee/schemas.py` centralizes encrypted message schema validation and allowed algorithms.
+- `app/routes/e2ee.py` manages device key bundle publishing and ratchet session metadata persistence.
+- Chat write endpoints enforce ciphertext-only payloads and never persist plaintext message body fields.
+- Current enforced message encryption suite: `X25519+AES-256-GCM` (AES-256-GCM for payload encryption + X25519 for ECDH key agreement).
+
+This layout is designed to make a later PQC migration straightforward by replacing the algorithm allow-list and key bundle/session schema in the dedicated `app/e2ee/` module.
+
+For full rollout instructions (including client steps required for true E2EE), see `py_backend/E2EE_ROADMAP.md`.
