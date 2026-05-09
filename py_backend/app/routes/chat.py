@@ -44,6 +44,35 @@ def to_docs(snapshot):
     return [{'id': d.id, **(d.to_dict() or {})} for d in snapshot]
 
 
+def get_sender_bundle(uid: str, device_id: str):
+    ref = db_client().collection('e2eeKeyBundles').document(f'{uid}:{device_id}')
+    doc = ref.get()
+    return doc.to_dict() if doc.exists else None
+
+
+def assert_sender_bundle_binding(actor_uid: str, encrypted_payload: dict):
+    device_id = encrypted_payload.get('senderDeviceId') or 'web-default'
+    bundle = get_sender_bundle(actor_uid, device_id)
+    if not bundle:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail='Missing sender key bundle for device')
+
+    if encrypted_payload.get('keyId') != bundle.get('signedPreKeySignature'):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail='Encrypted signer key does not match sender bundle')
+
+    suite = bundle.get('suite') or {}
+    if suite:
+        for key in ('kem', 'aead', 'kdf', 'sig'):
+            expected = suite.get(key)
+            if expected and encrypted_payload.get(key) != expected:
+                from fastapi import HTTPException
+
+                raise HTTPException(status_code=400, detail=f'Encrypted payload {key} does not match sender suite')
+
+
 def get_message_ref(thread_type: str, thread_id: str, message_id: str):
     db = db_client()
     if thread_type == 'direct':
@@ -71,6 +100,7 @@ def send_message(body: dict):
     must_thread_type(thread_type)
     must(actor_uid, 'actorUid')
     must(actor_name, 'actorName')
+    assert_sender_bundle_binding(actor_uid, encrypted_payload)
 
     if thread_type == 'direct':
         must(target_uid, 'targetUid')
