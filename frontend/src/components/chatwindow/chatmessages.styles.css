@@ -1,5 +1,15 @@
-@import "./chatwindow.css";
+.qx-messages,
+.qx-msg-row,
+.qx-bubble,
+.qx-msg-actions,
+.qx-forward-panel,
+.qx-call-banner,
+.qx-call-media,
+.qx-call-logs-panel {
+  /* Message/call content styles are defined in chatwindow.base.css; this file scopes ownership for message region styles. */
+}
 
+/* Migrated from legacy ChatMessages.css */
 .qx-msg-video {
   width: min(100%, 280px);
   max-height: 280px;
@@ -55,3 +65,4 @@
   letter-spacing: 0.02em;
   opacity: 0.72;
 }
+

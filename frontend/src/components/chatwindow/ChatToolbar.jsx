@@ -1,4 +1,3 @@
-import "./ChatToolbar.css";
 
 const ChatToolbar = ({ chatSearch, setChatSearch }) => (
   <div className="qx-chat-toolbar">

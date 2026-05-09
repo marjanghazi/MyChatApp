@@ -5,7 +5,6 @@ import data from "@emoji-mart/data";
 import VoiceRecorderButton from "./voice/VoiceRecorderButton";
 import AttachmentPickerMenu from "./media/AttachmentPickerMenu";
 import MediaPreviewOverlay from "./media/MediaPreviewOverlay";
-import "./ChatComposer.css";
 
 function ChatComposer({
   activeThreadType,

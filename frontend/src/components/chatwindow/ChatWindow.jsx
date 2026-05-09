@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import "./chatwindow.base.css";
-import "./chatwindow.header.css";
-import "./chatwindow.messages.css";
-import "./chatwindow.composer.css";
-import "./chatwindow.overlays.css";
+import "./chatwindow.styles.css";
+import "./chatwindow.layout.css";
 import { ICE_SERVERS, MAX_FILE_SIZE_BYTES, THEMES } from "./chatConstants";
 import {
   conversationIdFor,
@@ -91,6 +88,8 @@ const ChatWindow = ({
   const messagesEndRef            = useRef(null);
   const composerRef               = useRef(null);
   const callDurationIntervalRef   = useRef(null);
+  const stopCallMediaRef          = useRef(null);
+  const setCallStateRef           = useRef(null);
 
   // FIX #1 — ICE candidate buffer. Candidates arriving before setRemoteDescription
   // is called are buffered here and flushed once the remote desc is applied.
@@ -305,7 +304,7 @@ const ChatWindow = ({
               await applyRemoteDescription(peerConnectionRef.current, signal.sdp);
               const currentCall = selectedCallRef.current;
               if (currentCall?.status !== "active") {
-                await setCallState({
+                  await setCallStateRef.current?.({
                   ...currentCall,
                   status: "active",
                   startedAt: currentCall?.startedAt || new Date().toISOString(),
@@ -319,13 +318,13 @@ const ChatWindow = ({
                 await peerConnectionRef.current.addIceCandidate(candidate).catch(() => {});
               }
             } else if (signal.type === "hangup") {
-              await setCallState({
+              await setCallStateRef.current?.({
                 status: "ended",
                 endedAt: new Date().toISOString(),
                 endedBy: signal.from,
                 reason: signal.reason || "hangup",
               });
-              stopCallMedia();
+              stopCallMediaRef.current?.();
             }
           } finally {
             await deleteSignalApi(selectedConversationId, signal.id).catch(() => {});
@@ -368,7 +367,7 @@ const ChatWindow = ({
     }
   };
 
-  const stopCallMedia = () => {
+  function stopCallMedia() {
     // Reset ICE state
     hasRemoteDescRef.current        = false;
     pendingIceCandidatesRef.current = [];
@@ -389,20 +388,7 @@ const ChatWindow = ({
     setIsMuted(false);
     setIsVideoOff(false);
     if (onStopCallMedia) onStopCallMedia();
-  };
-
-  /** Save only the call log subcollection entry (no chat message). */
-  const saveCallLogOnly = async (callData) => {
-    if (!authUser?.uid || !selectedConversationId) return;
-    try {
-      await updateConversationMeta(selectedConversationId, {
-        participants: [authUser.uid, selectedUser?.uid],
-      });
-      await addConversationCallLog(selectedConversationId, callData);
-    } catch (e) {
-      console.error("saveCallLogOnly error:", e);
-    }
-  };
+  }
 
   /**
    * Save a call log entry AND a call message in the chat thread.
@@ -429,7 +415,7 @@ const ChatWindow = ({
     }
   };
 
-  const setCallState = async (nextCallState) => {
+  async function setCallState(nextCallState) {
     if (!authUser?.uid || !selectedConversationId) return;
     try {
       await updateConversationMeta(selectedConversationId, { callState: nextCallState });
@@ -437,7 +423,9 @@ const ChatWindow = ({
     } catch (e) {
       console.error("setCallState error:", e);
     }
-  };
+  }
+  stopCallMediaRef.current = stopCallMedia;
+  setCallStateRef.current = setCallState;
 
   const sendCallSignal = async (payload) => {
     if (!authUser?.uid || !selectedUser?.uid || !selectedConversationId) return;
