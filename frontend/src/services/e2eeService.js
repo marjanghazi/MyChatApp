@@ -162,14 +162,30 @@ export async function encryptTextForRecipient({ senderUid, recipientUid, text })
   };
 
   const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, signingKey, signingTranscript(encrypted));
-  return { ...encrypted, signature: toB64(signature) };
+
+  // Encrypt a sender-readable copy so sent messages remain decryptable in sender history.
+  const { key: selfKey, salt: selfSalt } = await deriveSessionAesKey(senderUid, publicJwk);
+  const selfNonce = crypto.getRandomValues(new Uint8Array(12));
+  const selfCiphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: selfNonce }, selfKey, enc.encode(text || ""));
+
+  return {
+    ...encrypted,
+    signature: toB64(signature),
+    selfCopy: {
+      ciphertext: toB64(selfCiphertext),
+      nonce: toB64(selfNonce),
+      salt: selfSalt,
+      ephemeralPubKey: encrypted.ephemeralPubKey,
+    },
+  };
 }
 
-export async function decryptTextFromSender({ receiverUid, senderIdentityJwk, senderSigningJwk, encrypted }) {
+export async function decryptTextFromSender({ receiverUid, senderIdentityJwk, senderSigningJwk, encrypted, isOwnMessage = false }) {
   must(encrypted, "Missing encrypted payload");
   must(encrypted.ciphertext && encrypted.nonce, "Invalid encrypted payload");
 
-  const senderJwk = encrypted?.ephemeralPubKey ? JSON.parse(atob(encrypted.ephemeralPubKey)) : senderIdentityJwk;
+  const activeEncrypted = isOwnMessage && encrypted?.selfCopy ? { ...encrypted, ...encrypted.selfCopy } : encrypted;
+  const senderJwk = activeEncrypted?.ephemeralPubKey ? JSON.parse(atob(activeEncrypted.ephemeralPubKey)) : senderIdentityJwk;
   must(senderJwk, "Missing sender identity key");
 
   try {
@@ -199,18 +215,18 @@ export async function decryptTextFromSender({ receiverUid, senderIdentityJwk, se
 
     const { key } = await deriveSessionAesKey(receiverUid, senderJwk, encrypted.salt);
     const plaintext = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: fromB64(encrypted.nonce) },
+      { name: "AES-GCM", iv: fromB64(activeEncrypted.nonce) },
       key,
-      fromB64(encrypted.ciphertext)
+      fromB64(activeEncrypted.ciphertext)
     );
     return dec.decode(plaintext);
   } catch {
     // Compatibility fallback for legacy payloads that used direct ECDH->AES key derivation.
     const legacyKey = await deriveLegacyAesKey(receiverUid, senderJwk);
     const plaintext = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: fromB64(encrypted.nonce) },
+      { name: "AES-GCM", iv: fromB64(activeEncrypted.nonce) },
       legacyKey,
-      fromB64(encrypted.ciphertext)
+      fromB64(activeEncrypted.ciphertext)
     );
     return dec.decode(plaintext);
   }

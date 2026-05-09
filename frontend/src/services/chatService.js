@@ -71,6 +71,7 @@ export const fetchThreadMessages = async (threadType, threadId, uid) => {
           senderIdentityJwk: JSON.parse(senderKeys.identityKey),
           senderSigningJwk: senderKeys.signingKey ? JSON.parse(senderKeys.signingKey) : null,
           encrypted: message.encrypted,
+          isOwnMessage: message.senderId === uid,
         });
         return { ...message, text };
       } catch {
