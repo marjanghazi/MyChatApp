@@ -1,5 +1,3 @@
-import "./ChatCallPanels.css";
-
 const ChatCallPanels = ({
   showCallLogs,
   activeThreadType,

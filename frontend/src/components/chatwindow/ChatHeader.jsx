@@ -1,6 +1,4 @@
 
-import "./ChatHeader.css";
-
 const ChatHeader = ({
   activeThreadType,
   selectedUser,
