@@ -2,6 +2,7 @@ import { apiRequest } from "./apiClient";
 
 const CURVE = "P-256";
 const SUITE = {
+  protocol: "mychatapp-e2ee-v1",
   kem: "ECDH-P256",
   aead: "AES-256-GCM",
   sig: "ECDSA-P256-SHA256",
@@ -124,6 +125,10 @@ export async function encryptTextForRecipient({ senderUid, recipientUid, text })
   const signingKey = await crypto.subtle.importKey("jwk", signPrivateJwk, { name: "ECDSA", namedCurve: CURVE }, false, ["sign"]);
 
   const encrypted = {
+    protocol: SUITE.protocol,
+    messageId: crypto.randomUUID(),
+    sessionId: `${senderUid}:${recipientUid}:web-default`,
+    msgIndex: Date.now(),
     version: SUITE.version,
     kem: SUITE.kem,
     aead: SUITE.aead,

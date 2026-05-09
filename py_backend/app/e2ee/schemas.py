@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-REQUIRED_ENCRYPTED_FIELDS = ('ciphertext', 'nonce', 'version', 'kem', 'aead', 'kdf', 'sig', 'salt', 'signature', 'keyId')
+REQUIRED_ENCRYPTED_FIELDS = ('ciphertext', 'nonce', 'version', 'kem', 'aead', 'kdf', 'sig', 'salt', 'signature', 'keyId', 'protocol', 'messageId', 'sessionId', 'msgIndex')
 OPTIONAL_ENCRYPTED_FIELDS = ('aad', 'senderDeviceId', 'ephemeralPubKey')
 ALLOWED_ENCRYPTION_ALGORITHMS = {'X25519+AES-256-GCM', 'P256+AES-256-GCM'}
 ALLOWED_KEM = {'ECDH-P256', 'X25519'}

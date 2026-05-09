@@ -76,6 +76,22 @@ def send_message(body: dict):
         must(target_uid, 'targetUid')
         must(thread_id, 'threadId')
         conversation_ref = db.collection('conversations').document(thread_id)
+        # Basic replay protection per (thread, sender, sessionId, msgIndex)
+        session_id = encrypted_payload.get('sessionId')
+        msg_index = encrypted_payload.get('msgIndex')
+        if session_id and msg_index is not None:
+            duplicate = (
+                conversation_ref.collection('messages')
+                .where('senderId', '==', actor_uid)
+                .where('encrypted.sessionId', '==', session_id)
+                .where('encrypted.msgIndex', '==', msg_index)
+                .limit(1)
+                .stream()
+            )
+            if any(True for _ in duplicate):
+                from fastapi import HTTPException
+
+                raise HTTPException(status_code=409, detail='Duplicate encrypted message index detected')
         final_payload = {
             'encrypted': encrypted_payload,
             'type': payload.get('type') or 'text',
