@@ -35,6 +35,7 @@ import PublicHomePage from "./pages/PublicHomePage";
 import AuthPage       from "./pages/AuthPage";
 import Sidebar        from "./components/Sidebar";
 import ChatWindow     from "./components/chatwindow/ChatWindow";
+import { publishSelfKeyBundle } from "./services/e2eeService";
 
 const normalizePhone = (raw) => raw.replace(/\D/g, "");
 const conversationIdFor = (uidA, uidB) => [uidA, uidB].sort().join("_");
@@ -125,6 +126,7 @@ function App() {
           displayName: user.displayName || user.email?.split("@")[0] || "User",
           email: user.email || "",
         });
+        await publishSelfKeyBundle(user.uid);
         lastProfileSyncRef.current = { uid: user.uid, ts: now };
         syncedProfileUids.add(user.uid);
       } catch {

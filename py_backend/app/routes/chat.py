@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 from datetime import datetime, timezone
+import base64
 
 from fastapi import APIRouter
 from firebase_admin import firestore
@@ -9,6 +10,7 @@ from google.api_core.exceptions import FailedPrecondition
 
 from app.cache import cached, invalidate_cache
 from app.e2ee import sanitize_encrypted_payload
+from app.e2ee.verify import verify_envelope_signature
 from app.errors import must, must_thread_type
 from app.firebase_client import db_client
 
@@ -44,6 +46,41 @@ def to_docs(snapshot):
     return [{'id': d.id, **(d.to_dict() or {})} for d in snapshot]
 
 
+def get_sender_bundle(uid: str, device_id: str):
+    ref = db_client().collection('e2eeKeyBundles').document(f'{uid}:{device_id}')
+    doc = ref.get()
+    return doc.to_dict() if doc.exists else None
+
+
+def assert_sender_bundle_binding(actor_uid: str, encrypted_payload: dict):
+    device_id = encrypted_payload.get('senderDeviceId') or 'web-default'
+    bundle = get_sender_bundle(actor_uid, device_id)
+    if not bundle:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail='Missing sender key bundle for device')
+
+    expected_key_id = base64.b64encode((bundle.get('signingPublicKey') or '').encode('utf-8')).decode('utf-8')
+    if encrypted_payload.get('keyId') != expected_key_id:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail='Encrypted signer key does not match sender bundle')
+
+    if not verify_envelope_signature(encrypted_payload, bundle.get('signingPublicKey')):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail='Invalid encrypted message signature')
+
+    suite = bundle.get('suite') or {}
+    if suite:
+        for key in ('kem', 'aead', 'kdf', 'sig'):
+            expected = suite.get(key)
+            if expected and encrypted_payload.get(key) != expected:
+                from fastapi import HTTPException
+
+                raise HTTPException(status_code=400, detail=f'Encrypted payload {key} does not match sender suite')
+
+
 def get_message_ref(thread_type: str, thread_id: str, message_id: str):
     db = db_client()
     if thread_type == 'direct':
@@ -71,11 +108,28 @@ def send_message(body: dict):
     must_thread_type(thread_type)
     must(actor_uid, 'actorUid')
     must(actor_name, 'actorName')
+    assert_sender_bundle_binding(actor_uid, encrypted_payload)
 
     if thread_type == 'direct':
         must(target_uid, 'targetUid')
         must(thread_id, 'threadId')
         conversation_ref = db.collection('conversations').document(thread_id)
+        # Basic replay protection per (thread, sender, sessionId, msgIndex)
+        session_id = encrypted_payload.get('sessionId')
+        msg_index = encrypted_payload.get('msgIndex')
+        if session_id and msg_index is not None:
+            duplicate = (
+                conversation_ref.collection('messages')
+                .where('senderId', '==', actor_uid)
+                .where('encrypted.sessionId', '==', session_id)
+                .where('encrypted.msgIndex', '==', msg_index)
+                .limit(1)
+                .stream()
+            )
+            if any(True for _ in duplicate):
+                from fastapi import HTTPException
+
+                raise HTTPException(status_code=409, detail='Duplicate encrypted message index detected')
         final_payload = {
             'encrypted': encrypted_payload,
             'type': payload.get('type') or 'text',

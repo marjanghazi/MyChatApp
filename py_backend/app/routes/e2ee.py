@@ -6,6 +6,7 @@ from firebase_admin import firestore
 from app.e2ee import ALLOWED_ENCRYPTION_ALGORITHMS
 from app.errors import must
 from app.firebase_client import db_client
+from app.e2ee.verify import verify_signed_prekey
 
 router = APIRouter(prefix='/api/e2ee', tags=['e2ee'])
 
@@ -19,16 +20,27 @@ def publish_keys(body: dict):
     must(device_id, 'deviceId')
     must(key_bundle.get('identityKey'), 'keyBundle.identityKey')
     must(key_bundle.get('signedPreKey'), 'keyBundle.signedPreKey')
+    must(key_bundle.get('signingPublicKey'), 'keyBundle.signingPublicKey')
     must(key_bundle.get('signedPreKeySignature'), 'keyBundle.signedPreKeySignature')
 
+
+    if not verify_signed_prekey(
+        key_bundle.get('signingPublicKey'),
+        key_bundle.get('signedPreKey'),
+        key_bundle.get('signedPreKeySignature'),
+    ):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail='Invalid signed pre-key signature')
     one_time_pre_keys = key_bundle.get('oneTimePreKeys') or []
     if not isinstance(one_time_pre_keys, list):
         from fastapi import HTTPException
 
         raise HTTPException(status_code=400, detail='keyBundle.oneTimePreKeys must be a list')
 
-    algorithm = key_bundle.get('algorithm') or 'X25519+AES-256-GCM'
-    if algorithm not in ALLOWED_ENCRYPTION_ALGORITHMS:
+    suite = key_bundle.get('suite') or {}
+    algorithm = key_bundle.get('algorithm') or (f"{suite.get('kem')}+{suite.get('aead')}" if suite else 'X25519+AES-256-GCM')
+    if algorithm not in ALLOWED_ENCRYPTION_ALGORITHMS and algorithm != 'ECDH-P256+AES-256-GCM':
         from fastapi import HTTPException
 
         raise HTTPException(status_code=400, detail='Unsupported key bundle algorithm')
@@ -38,9 +50,11 @@ def publish_keys(body: dict):
         {
             'uid': uid,
             'deviceId': device_id,
-            'algorithm': algorithm,
+            'algorithm': 'P256+AES-256-GCM' if algorithm == 'ECDH-P256+AES-256-GCM' else algorithm,
+            'suite': suite or None,
             'identityKey': key_bundle.get('identityKey'),
             'signedPreKey': key_bundle.get('signedPreKey'),
+            'signingPublicKey': key_bundle.get('signingPublicKey'),
             'signedPreKeySignature': key_bundle.get('signedPreKeySignature'),
             'oneTimePreKeys': one_time_pre_keys,
             'updatedAt': firestore.SERVER_TIMESTAMP,

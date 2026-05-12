@@ -1,10 +1,25 @@
 import { apiRequest } from "./apiClient";
 
 const CURVE = "P-256";
-const ALGO = "P256+AES-256-GCM";
+const SUITE = {
+  protocol: "mychatapp-e2ee-v1",
+  kem: "ECDH-P256",
+  aead: "AES-256-GCM",
+  sig: "ECDSA-P256-SHA256",
+  kdf: "HKDF-SHA256",
+  version: 1,
+};
+
+const enc = new TextEncoder();
+const dec = new TextDecoder();
 
 const toB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
 const fromB64 = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+const must = (value, msg) => {
+  if (!value) throw new Error(msg);
+  return value;
+};
 
 async function ensureIdentity(uid) {
   const privKeyRef = `e2ee:priv:${uid}`;
@@ -15,7 +30,7 @@ async function ensureIdentity(uid) {
     return { privateJwk: JSON.parse(cachedPriv), publicJwk: JSON.parse(cachedPub) };
   }
 
-  const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: CURVE }, true, ["deriveKey", "deriveBits"]);
+  const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: CURVE }, true, ["deriveBits"]);
   const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
   const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
   localStorage.setItem(privKeyRef, JSON.stringify(privateJwk));
@@ -43,82 +58,176 @@ async function ensureSigningIdentity(uid) {
 export async function publishSelfKeyBundle(uid) {
   if (!uid) return;
   const { publicJwk } = await ensureIdentity(uid);
-  const { publicJwk: signPublicJwk } = await ensureSigningIdentity(uid);
+  const { privateJwk: signPrivateJwk, publicJwk: signPublicJwk } = await ensureSigningIdentity(uid);
+  const signingKey = await crypto.subtle.importKey("jwk", signPrivateJwk, { name: "ECDSA", namedCurve: CURVE }, false, ["sign"]);
+  const signedPreKeySignature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    signingKey,
+    enc.encode(JSON.stringify(publicJwk))
+  );
   await apiRequest("/api/e2ee/keys/publish", {
     method: "POST",
     body: JSON.stringify({
       uid,
       deviceId: "web-default",
       keyBundle: {
-        algorithm: ALGO,
+        suite: SUITE,
         identityKey: JSON.stringify(publicJwk),
         signedPreKey: JSON.stringify(publicJwk),
-        signedPreKeySignature: JSON.stringify(signPublicJwk),
+        signingPublicKey: JSON.stringify(signPublicJwk),
+        signedPreKeySignature: toB64(signedPreKeySignature),
         oneTimePreKeys: [],
       },
     }),
   });
 }
 
-async function deriveSharedAesKey(senderUid, recipientIdentityKeyJwk) {
-  const { privateJwk } = await ensureIdentity(senderUid);
+async function deriveSessionAesKey(myUid, peerPublicJwk, saltInput) {
+  const { privateJwk } = await ensureIdentity(myUid);
+  const myPrivate = await crypto.subtle.importKey("jwk", privateJwk, { name: "ECDH", namedCurve: CURVE }, false, ["deriveBits"]);
+  const theirPublic = await crypto.subtle.importKey("jwk", peerPublicJwk, { name: "ECDH", namedCurve: CURVE }, false, []);
+
+  const sharedBits = await crypto.subtle.deriveBits({ name: "ECDH", public: theirPublic }, myPrivate, 256);
+  const salt = saltInput ? fromB64(saltInput) : crypto.getRandomValues(new Uint8Array(32));
+  const ikm = await crypto.subtle.importKey("raw", sharedBits, "HKDF", false, ["deriveKey"]);
+  const info = enc.encode("mychatapp:e2ee:aesgcm:v1");
+
+  const key = await crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt, info },
+    ikm,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+
+  return { key, salt: toB64(salt) };
+}
+
+
+async function deriveLegacyAesKey(myUid, peerPublicJwk) {
+  const { privateJwk } = await ensureIdentity(myUid);
   const myPrivate = await crypto.subtle.importKey("jwk", privateJwk, { name: "ECDH", namedCurve: CURVE }, false, ["deriveKey"]);
-  const theirPublic = await crypto.subtle.importKey("jwk", recipientIdentityKeyJwk, { name: "ECDH", namedCurve: CURVE }, false, []);
-  return crypto.subtle.deriveKey({ name: "ECDH", public: theirPublic }, myPrivate, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  const theirPublic = await crypto.subtle.importKey("jwk", peerPublicJwk, { name: "ECDH", namedCurve: CURVE }, false, []);
+  return crypto.subtle.deriveKey({ name: "ECDH", public: theirPublic }, myPrivate, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+}
+
+function signingTranscript(encrypted) {
+  return enc.encode(
+    [
+      encrypted.ciphertext,
+      encrypted.nonce,
+      encrypted.salt,
+      encrypted.kem,
+      encrypted.aead,
+      encrypted.kdf,
+      encrypted.sig,
+      String(encrypted.version),
+    ].join(".")
+  );
 }
 
 export async function encryptTextForRecipient({ senderUid, recipientUid, text }) {
   const bundles = await apiRequest(`/api/e2ee/keys/${encodeURIComponent(recipientUid)}`);
-  const recipient = (bundles?.bundles || [])[0];
-  if (!recipient?.identityKey) throw new Error("Recipient key bundle missing");
+  const recipient = (bundles?.bundles || []).find((bundle) => bundle?.identityKey || bundle?.signedPreKey);
+  must(
+    recipient?.identityKey || recipient?.signedPreKey,
+    "Recipient key bundle missing. Recipient must publish key bundle at least once."
+  );
+
+  const recipientDhKey = recipient.identityKey || recipient.signedPreKey;
   const { publicJwk } = await ensureIdentity(senderUid);
-  const key = await deriveSharedAesKey(senderUid, JSON.parse(recipient.identityKey));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(text || ""));
+  const { key, salt } = await deriveSessionAesKey(senderUid, JSON.parse(recipientDhKey));
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, key, enc.encode(text || ""));
+
   const { privateJwk: signPrivateJwk, publicJwk: signPublicJwk } = await ensureSigningIdentity(senderUid);
   const signingKey = await crypto.subtle.importKey("jwk", signPrivateJwk, { name: "ECDSA", namedCurve: CURVE }, false, ["sign"]);
-  const signInput = new TextEncoder().encode(`${toB64(ciphertext)}.${toB64(iv)}.${ALGO}.1`);
-  const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, signingKey, signInput);
-  return {
-    algorithm: ALGO,
-    version: 1,
+
+  const encrypted = {
+    protocol: SUITE.protocol,
+    messageId: crypto.randomUUID(),
+    sessionId: `${senderUid}:${recipientUid}:web-default`,
+    msgIndex: Date.now(),
+    version: SUITE.version,
+    kem: SUITE.kem,
+    aead: SUITE.aead,
+    kdf: SUITE.kdf,
+    sig: SUITE.sig,
     ciphertext: toB64(ciphertext),
-    nonce: toB64(iv),
+    nonce: toB64(nonce),
+    salt,
     ephemeralPubKey: btoa(JSON.stringify(publicJwk)),
     senderDeviceId: "web-default",
-    signature: toB64(signature),
     keyId: btoa(JSON.stringify(signPublicJwk)),
+  };
+
+  const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, signingKey, signingTranscript(encrypted));
+
+  // Encrypt a sender-readable copy so sent messages remain decryptable in sender history.
+  const { key: selfKey, salt: selfSalt } = await deriveSessionAesKey(senderUid, publicJwk);
+  const selfNonce = crypto.getRandomValues(new Uint8Array(12));
+  const selfCiphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: selfNonce }, selfKey, enc.encode(text || ""));
+
+  return {
+    ...encrypted,
+    signature: toB64(signature),
+    selfCopy: {
+      ciphertext: toB64(selfCiphertext),
+      nonce: toB64(selfNonce),
+      salt: selfSalt,
+      ephemeralPubKey: encrypted.ephemeralPubKey,
+    },
   };
 }
 
-export async function decryptTextFromSender({ receiverUid, senderIdentityJwk, encrypted }) {
-  const senderJwk = encrypted?.ephemeralPubKey
-    ? JSON.parse(atob(encrypted.ephemeralPubKey))
-    : senderIdentityJwk;
-  const key = await deriveSharedAesKey(receiverUid, senderJwk);
-  const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: fromB64(encrypted.nonce) },
-    key,
-    fromB64(encrypted.ciphertext)
-  );
-  return new TextDecoder().decode(plaintext);
-}
-  if (encrypted?.signature && encrypted?.keyId) {
-    const verifyKey = await crypto.subtle.importKey(
-      "jwk",
-      JSON.parse(atob(encrypted.keyId)),
-      { name: "ECDSA", namedCurve: CURVE },
-      false,
-      ["verify"]
+export async function decryptTextFromSender({ receiverUid, senderIdentityJwk, senderSigningJwk, encrypted, isOwnMessage = false }) {
+  must(encrypted, "Missing encrypted payload");
+  must(encrypted.ciphertext && encrypted.nonce, "Invalid encrypted payload");
+
+  const activeEncrypted = isOwnMessage && encrypted?.selfCopy ? { ...encrypted, ...encrypted.selfCopy } : encrypted;
+  const senderJwk = activeEncrypted?.ephemeralPubKey ? JSON.parse(atob(activeEncrypted.ephemeralPubKey)) : senderIdentityJwk;
+  must(senderJwk, "Missing sender identity key");
+
+  try {
+    if (encrypted.signature && encrypted.keyId) {
+      const claimedSigningJwk = JSON.parse(atob(encrypted.keyId));
+      if (senderSigningJwk) {
+        const trusted = JSON.stringify(senderSigningJwk);
+        const claimed = JSON.stringify(claimedSigningJwk);
+        if (trusted !== claimed) throw new Error("Signer key does not match trusted sender bundle");
+      }
+
+      const verifyKey = await crypto.subtle.importKey(
+        "jwk",
+        claimedSigningJwk,
+        { name: "ECDSA", namedCurve: CURVE },
+        false,
+        ["verify"]
+      );
+      const valid = await crypto.subtle.verify(
+        { name: "ECDSA", hash: "SHA-256" },
+        verifyKey,
+        fromB64(encrypted.signature),
+        signingTranscript(encrypted)
+      );
+      if (!valid) throw new Error("Invalid message signature");
+    }
+
+    const { key } = await deriveSessionAesKey(receiverUid, senderJwk, encrypted.salt);
+    const plaintext = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: fromB64(activeEncrypted.nonce) },
+      key,
+      fromB64(activeEncrypted.ciphertext)
     );
-    const signInput = new TextEncoder().encode(
-      `${encrypted.ciphertext}.${encrypted.nonce}.${encrypted.algorithm}.${encrypted.version}`
+    return dec.decode(plaintext);
+  } catch {
+    // Compatibility fallback for legacy payloads that used direct ECDH->AES key derivation.
+    const legacyKey = await deriveLegacyAesKey(receiverUid, senderJwk);
+    const plaintext = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: fromB64(activeEncrypted.nonce) },
+      legacyKey,
+      fromB64(activeEncrypted.ciphertext)
     );
-    const valid = await crypto.subtle.verify(
-      { name: "ECDSA", hash: "SHA-256" },
-      verifyKey,
-      fromB64(encrypted.signature),
-      signInput
-    );
-    if (!valid) throw new Error("Invalid message signature");
+    return dec.decode(plaintext);
   }
+}
