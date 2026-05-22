@@ -202,7 +202,7 @@ const ChatWindow = ({
     };
 
     run();
-    const timer = setInterval(run, 7000);
+    const timer = setInterval(run, 2000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -227,7 +227,7 @@ const ChatWindow = ({
       }
     };
     run();
-    const timer = setInterval(run, 7000);
+    const timer = setInterval(run, 2000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -252,7 +252,7 @@ const ChatWindow = ({
       }
     };
     run();
-    const timer = setInterval(run, 7000);
+    const timer = setInterval(run, 2000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -615,7 +615,7 @@ const ChatWindow = ({
     return "file";
   };
 
-  const pushOptimisticMessage = ({ payload, threadType }) => {
+  const pushOptimisticMessage = ({ payload, threadType, targetOnline = false }) => {
     const optimisticId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const optimisticMessage = {
       id: optimisticId,
@@ -625,7 +625,7 @@ const ChatWindow = ({
       receiverId: threadType === "direct" ? selectedUser?.uid : undefined,
       createdAt: new Date().toISOString(),
       readBy: [authUser?.uid].filter(Boolean),
-      deliveredTo: [authUser?.uid].filter(Boolean),
+      deliveredTo: [authUser?.uid, ...(threadType === "direct" && targetOnline ? [selectedUser?.uid] : [])].filter(Boolean),
       _optimistic: true,
     };
     setMessages((prev) => [...prev, optimisticMessage]);
@@ -817,6 +817,7 @@ const ChatWindow = ({
             replyTo: replyPayload || undefined,
           },
           threadType: "direct",
+          targetOnline: Boolean(selectedUser?.isOnline),
         });
         await sendChatMessage({
           threadType: "direct",
