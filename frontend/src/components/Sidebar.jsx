@@ -265,7 +265,7 @@ const Sidebar = ({
         item,
       });
       const convPatch = {};
-      if (optionKey === "archiveChat") convPatch.archivedBy = { ...(item.conv?.archivedBy || {}), [authUser.uid]: true };
+      if (optionKey === "archiveChat") convPatch.archivedBy = { ...(item.conv?.archivedBy || {}), [authUser.uid]: !item.isArchived };
       if (optionKey === "toggleMuteNotifications") convPatch.mutedBy = { ...(item.conv?.mutedBy || {}), [authUser.uid]: !item.isMuted };
       if (optionKey === "togglePinChat") convPatch.pinnedBy = { ...(item.conv?.pinnedBy || {}), [authUser.uid]: !item.isPinned };
       if (optionKey === "markAsUnread") convPatch.unreadBy = { ...(item.conv?.unreadBy || {}), [authUser.uid]: Math.max(item.unread || 0, 1) };
@@ -287,7 +287,7 @@ const Sidebar = ({
     const isDirect = item.type === "direct";
     return (
       <div className="wa-item-options-menu" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:archiveChat`} onClick={() => runContactOption(item, "archiveChat")}>Archive chat</button>
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:archiveChat`} onClick={() => runContactOption(item, "archiveChat")}>{item.isArchived ? "Unarchive chat" : "Archive chat"}</button>
         <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:toggleMuteNotifications`} onClick={() => runContactOption(item, "toggleMuteNotifications")}>{item.isMuted ? "Unmute notifications" : "Mute notifications"}</button>
         <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:togglePinChat`} onClick={() => runContactOption(item, "togglePinChat")}>{item.isPinned ? "Unpin chat" : "Pin chat"}</button>
         <button
