@@ -54,9 +54,9 @@ const ChatHeader = ({
                 : (selectedUser?.displayName || "U").charAt(0).toUpperCase()}
             </span>
         }
-        {activeThreadType === "direct" && (
+        {/* {activeThreadType === "direct" && (
           <span className={`qx-presence ${selectedUser?.isOnline ? "qx-presence--online" : "qx-presence--offline"}`} />
-        )}
+        )} */}
       </div>
       <div className="qx-chat-contact-meta">
         <h3>{activeThreadName}</h3>
