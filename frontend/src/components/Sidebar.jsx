@@ -1,4 +1,4 @@
-// Sidebar.jsx — QuantX · WhatsApp-style Sidebar
+// Sidebar.jsx — QuantX · QuantX-style Sidebar
 import { useMemo, useState } from "react";
 import "./Sidebar.css";
 
@@ -221,7 +221,7 @@ const Sidebar = ({
       {/* Header with QUANTX brand and menu */}
       <div className="wa-sidebar-header">
         <div className="wa-header-left">
-          <h1 className="wa-brand">WhatsApp</h1>
+          <h1 className="wa-brand">QuantX</h1>
         </div>
         <div className="wa-header-right">
           <div className="wa-menu-container">
