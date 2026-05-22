@@ -652,7 +652,24 @@ function App() {
 
   // ── Main shell ────────────────────────────────────────────────────────────
   return (
-    <div className={`qx-shell app-theme-${appTheme} ${showMobileSidebar ? "sidebar-open" : ""}`} style={{ gridTemplateColumns: `${sidebarWidth}px 8px 1fr` }}>
+    <div className={`qx-shell app-theme-${appTheme} ${showMobileSidebar ? "sidebar-open" : ""}`} style={{ gridTemplateColumns: `64px ${sidebarWidth}px 8px 1fr` }}>
+      <aside className="qx-nav-rail" aria-label="Primary navigation">
+        <div className="qx-nav-rail-top">
+          <button type="button" className="qx-rail-btn qx-rail-btn--active" title="Chats">💬</button>
+          <button type="button" className="qx-rail-btn" title="Status">◉</button>
+          <button type="button" className="qx-rail-btn" title="Calls">📞</button>
+          <button type="button" className="qx-rail-btn" title="Communities">👥</button>
+        </div>
+        <div className="qx-nav-rail-bottom">
+          <button type="button" className="qx-rail-btn" title="Settings" onClick={() => setShowProfilePanel((p) => !p)}>⚙</button>
+          <img
+            className="qx-rail-profile"
+            src={profile?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.displayName || "U")}&background=4d7fff&color=fff&bold=true`}
+            alt="Profile"
+            onClick={() => setShowProfilePanel((p) => !p)}
+          />
+        </div>
+      </aside>
 
       <Sidebar
         authUser={authUser}
@@ -772,20 +789,20 @@ function App() {
       {/* Chat window or welcome screen */}
       {!selectedUser && !selectedGroup && !selectedChannel ? (
         <div className="qx-welcome">
-          <div className="qx-welcome-graphic">
-            <div className="qx-welcome-orb">
-              <div className="qx-welcome-ring" />
-              <div className="qx-welcome-ring qx-welcome-ring-2" />
-              <div className="qx-welcome-ring qx-welcome-ring-3" />
-              <span>⚛</span>
+          <div className="qx-welcome-card">
+            <div className="qx-welcome-graphic">
+              <div className="qx-welcome-orb">
+                <span>📱</span>
+              </div>
             </div>
+            <h3>Download App for Desktop</h3>
+            <p>Get extra features like voice and video calling, screen sharing and more.</p>
+            <button type="button" className="qx-btn qx-btn--primary">Download</button>
           </div>
-          <h3>Welcome to QUANTX</h3>
-          <p>Select a contact to begin a quantum-secured conversation</p>
-          <div className="qx-welcome-features">
-            <span>🔐 End-to-End Encrypted</span>
-            <span>⚡ Real-Time Sync</span>
-            <span>🛡️ Zero-Knowledge</span>
+          <div className="qx-welcome-shortcuts">
+            <div className="qx-shortcut-tile"><span>📄</span><small>Send document</small></div>
+            <div className="qx-shortcut-tile"><span>👤</span><small>Add contact</small></div>
+            <div className="qx-shortcut-tile"><span>✳</span><small>Ask AI</small></div>
           </div>
         </div>
       ) : showGroupDetails && activeThreadType === "group" && selectedGroup ? (

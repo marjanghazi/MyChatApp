@@ -308,13 +308,19 @@ input, select, textarea { font: inherit; outline: none; }
 .qx-shell {
   height: 100%;
   display: grid;
-  grid-template-columns: 380px 8px 1fr;
+  grid-template-columns: 64px 380px 8px 1fr;
   background: var(--bg-primary);
   color: var(--text);
   overflow: hidden;
   position: relative;
   transition: background 0.3s ease, color 0.3s ease;
 }
+
+.qx-nav-rail { display:flex; flex-direction:column; justify-content:space-between; align-items:center; padding:12px 8px; border-right:1px solid var(--border); background:var(--bg-secondary); }
+.qx-nav-rail-top,.qx-nav-rail-bottom { display:flex; flex-direction:column; gap:10px; align-items:center; }
+.qx-rail-btn { width:40px; height:40px; border-radius:12px; background:var(--surface-hover); color:var(--text-dim); border:1px solid var(--border); }
+.qx-rail-btn--active { color:var(--accent-c); border-color:var(--accent-c); }
+.qx-rail-profile { width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid var(--border-glow); cursor:pointer; }
 
 /* ─────────────────────────────────────────────
    SIDEBAR
@@ -1076,6 +1082,12 @@ input, select, textarea { font: inherit; outline: none; }
   letter-spacing: 0.3px;
 }
 
+.qx-welcome-card { width:min(420px,90%); border:1px solid var(--border); background:var(--bg-card); border-radius:24px; padding:30px 24px; text-align:center; }
+.qx-welcome-shortcuts { display:flex; gap:22px; }
+.qx-shortcut-tile { width:120px; min-height:120px; border:1px solid var(--border); border-radius:18px; background:var(--surface-hover); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; }
+.qx-shortcut-tile span { font-size:28px; }
+.qx-shortcut-tile small { color:var(--text-dim); font-size:14px; }
+
 /* ─── Global Loader ─── */
 .qx-global-loader {
   position: fixed;
@@ -1489,7 +1501,7 @@ input, select, textarea { font: inherit; outline: none; }
    RESPONSIVE
    ───────────────────────────────────────────── */
 @media (max-width: 1024px) {
-  .qx-shell { grid-template-columns: 320px 8px 1fr; }
+  .qx-shell { grid-template-columns: 64px 320px 8px 1fr; }
 }
 
 @media (max-width: 768px) {
@@ -1497,6 +1509,7 @@ input, select, textarea { font: inherit; outline: none; }
     grid-template-columns: 1fr;
     position: relative;
   }
+  .qx-nav-rail { display: none; }
 
   .qx-sidebar {
     position: fixed;
@@ -1542,7 +1555,7 @@ input, select, textarea { font: inherit; outline: none; }
 
   .qx-emoji-picker { grid-template-columns: repeat(4, 1fr); }
   
-  .qx-welcome-features { flex-direction: column; align-items: center; }
+  .qx-welcome-shortcuts { flex-direction: column; align-items: center; }
   
   .qx-chat-toolbar { padding: 8px 12px; }
   .qx-encryption-badge { display: none; }
