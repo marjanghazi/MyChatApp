@@ -96,6 +96,7 @@ const Sidebar = ({
   const [showMenu, setShowMenu] = useState(false);
   const [activeItemMenuKey, setActiveItemMenuKey] = useState(null);
   const [runningOptionKey, setRunningOptionKey] = useState("");
+  const [localMetaByConversation, setLocalMetaByConversation] = useState({});
 
   // Build unified list items based on active filter AND search
   const listItems = useMemo(() => {
@@ -113,7 +114,10 @@ const Sidebar = ({
     if (filter === "All" || filter === "Unread" || filter === "Archived") {
       contacts.forEach((user) => {
         const convId = conversationIdFor(authUser.uid, user.uid);
-        const conv = conversations[convId];
+        const conv = {
+          ...(conversations[convId] || {}),
+          ...(localMetaByConversation[convId] || {}),
+        };
         const unread = conv?.unreadBy?.[authUser.uid] || 0;
         const isArchived = !!conv?.archivedBy?.[authUser.uid];
         const preview = conv?.lastMessage || user.phoneNumber || user.email || "No messages yet";
@@ -201,7 +205,7 @@ const Sidebar = ({
     });
 
     return items;
-  }, [filter, search, contacts, groups, followedChannels, conversations, authUser.uid, activeThreadType, selectedUser, selectedGroup, selectedChannel]);
+  }, [filter, search, contacts, groups, followedChannels, conversations, localMetaByConversation, authUser.uid, activeThreadType, selectedUser, selectedGroup, selectedChannel]);
 
   // Pinned items (only for direct messages)
   const archivedItems = listItems.filter((item) => item.type === "direct" && item.isArchived);
@@ -221,7 +225,26 @@ const Sidebar = ({
   };
 
   const markAllAsRead = () => {
-    // TODO: Implement mark all as read functionality
+    const directItems = listItems.filter((item) => item.type === "direct" && item.unread > 0);
+    directItems.forEach((item) => {
+      const convId = conversationIdFor(authUser.uid, item.user.uid);
+      setLocalMetaByConversation((prev) => ({
+        ...prev,
+        [convId]: {
+          ...(prev[convId] || {}),
+          unreadBy: {
+            ...((conversations[convId]?.unreadBy) || {}),
+            [authUser.uid]: 0,
+          },
+        },
+      }));
+      sidebarContactOptionsHandlers.markAsRead({
+        conversationId: convId,
+        conversation: item.conv,
+        authUser,
+      }).catch(() => {});
+    });
+    showToast("All chats marked as read.");
     setShowMenu(false);
   };
 
@@ -241,6 +264,16 @@ const Sidebar = ({
         authUser,
         item,
       });
+      const convPatch = {};
+      if (optionKey === "archiveChat") convPatch.archivedBy = { ...(item.conv?.archivedBy || {}), [authUser.uid]: true };
+      if (optionKey === "toggleMuteNotifications") convPatch.mutedBy = { ...(item.conv?.mutedBy || {}), [authUser.uid]: !item.isMuted };
+      if (optionKey === "togglePinChat") convPatch.pinnedBy = { ...(item.conv?.pinnedBy || {}), [authUser.uid]: !item.isPinned };
+      if (optionKey === "markAsUnread") convPatch.unreadBy = { ...(item.conv?.unreadBy || {}), [authUser.uid]: Math.max(item.unread || 0, 1) };
+      if (optionKey === "markAsRead") convPatch.unreadBy = { ...(item.conv?.unreadBy || {}), [authUser.uid]: 0 };
+      setLocalMetaByConversation((prev) => ({
+        ...prev,
+        [conversationId]: { ...(prev[conversationId] || {}), ...convPatch },
+      }));
       showToast("Updated successfully.");
       setActiveItemMenuKey(null);
     } catch {
