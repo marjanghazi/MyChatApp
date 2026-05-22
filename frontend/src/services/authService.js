@@ -51,6 +51,7 @@ export const updateProfile = async (user, patch) => {
   const { user: updated } = await apiRequest("/api/auth/update-profile", {
     method: "POST",
     body: JSON.stringify({
+      uid: user.uid,
       idToken: user.idToken,
       displayName: patch.displayName ?? user.displayName,
       photoURL: patch.photoURL ?? user.photoURL,

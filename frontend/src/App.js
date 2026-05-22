@@ -521,6 +521,7 @@ function App() {
       const displayName = profileNameInput.trim();
       await updateProfile(authUser, { displayName });
       await updateUserProfile(authUser.uid, { displayName });
+      setProfile((prev) => ({ ...(prev || {}), displayName }));
       setStatusText("✓ Identity updated.");
     } catch {
       setStatusText("✗ Update failed.");
@@ -536,6 +537,8 @@ function App() {
       const { url: photoURL } = await uploadMedia({ uid: authUser.uid, folder: "avatars", file });
       await updateProfile(authUser, { photoURL });
       await updateUserProfile(authUser.uid, { photoURL });
+      setProfile((prev) => ({ ...(prev || {}), photoURL }));
+      setAllUsers((prev) => prev.map((u) => (u.uid === authUser.uid ? { ...u, photoURL } : u)));
       setStatusText("✓ Profile picture updated.");
     } catch {
       setStatusText("✗ Upload failed.");
