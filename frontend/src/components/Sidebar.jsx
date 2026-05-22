@@ -1,6 +1,8 @@
 // Sidebar.jsx — QuantX · WhatsApp-style Sidebar
 import { useMemo, useState } from "react";
 import "./Sidebar.css";
+import { showToast } from "../services/alertService";
+import { sidebarContactOptionsHandlers } from "./sidebar-contact-options";
 
 const FILTERS = ["All", "Unread", "Groups", "Channels"];
 
@@ -92,6 +94,8 @@ const Sidebar = ({
   const [filter, setFilter] = useState("All");
   const [showAddContact, setShowAddContact] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [activeItemMenuKey, setActiveItemMenuKey] = useState(null);
+  const [runningOptionKey, setRunningOptionKey] = useState("");
 
   // Build unified list items based on active filter AND search
   const listItems = useMemo(() => {
@@ -215,13 +219,54 @@ const Sidebar = ({
     setShowMenu(false);
   };
 
+  const runContactOption = async (item, optionKey) => {
+    if (item.type !== "direct") {
+      showToast("This option is currently available for direct chats.");
+      return;
+    }
+    const conversationId = conversationIdFor(authUser.uid, item.user.uid);
+    const handler = sidebarContactOptionsHandlers[optionKey];
+    if (!handler) return;
+    setRunningOptionKey(`${item.key}:${optionKey}`);
+    try {
+      await handler({
+        conversationId,
+        conversation: item.conv,
+        authUser,
+        item,
+      });
+      showToast("Updated successfully.");
+      setActiveItemMenuKey(null);
+    } catch {
+      showToast("Unable to update this option right now.");
+    } finally {
+      setRunningOptionKey("");
+    }
+  };
+
+  const renderItemOptionsMenu = (item) => {
+    const isDirect = item.type === "direct";
+    return (
+      <div className="wa-item-options-menu" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:archiveChat`} onClick={() => runContactOption(item, "archiveChat")}>Archive chat</button>
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:toggleMuteNotifications`} onClick={() => runContactOption(item, "toggleMuteNotifications")}>{item.isMuted ? "Unmute notifications" : "Mute notifications"}</button>
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:togglePinChat`} onClick={() => runContactOption(item, "togglePinChat")}>{item.isPinned ? "Unpin chat" : "Pin chat"}</button>
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:markAsUnread`} onClick={() => runContactOption(item, "markAsUnread")}>Mark as unread</button>
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:toggleFavorite`} onClick={() => runContactOption(item, "toggleFavorite")}>Add to favorites</button>
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:toggleListTag`} onClick={() => runContactOption(item, "toggleListTag")}>Add to list</button>
+        <div className="wa-item-options-menu-divider" />
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:clearChat`} onClick={() => runContactOption(item, "clearChat")}>Clear chat</button>
+      </div>
+    );
+  };
+
   return (
     <aside className={`wa-sidebar ${showMobileSidebar ? "wa-sidebar--open" : ""} app-theme-${appTheme}`}>
 
       {/* Header with QUANTX brand and menu */}
       <div className="wa-sidebar-header">
         <div className="wa-header-left">
-          <h1 className="wa-brand">QUANTX</h1>
+          <h1 className="wa-brand">WhatsApp</h1>
         </div>
         <div className="wa-header-right">
           <div className="wa-menu-container">
@@ -444,6 +489,19 @@ const Sidebar = ({
                     )}
                   </div>
                 </div>
+                <div className="wa-item-options-wrap">
+                  <button
+                    type="button"
+                    className="wa-item-options-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveItemMenuKey((prev) => prev === item.key ? null : item.key);
+                    }}
+                  >
+                    ▾
+                  </button>
+                  {activeItemMenuKey === item.key && renderItemOptionsMenu(item)}
+                </div>
               </button>
             ))}
           </>
@@ -492,6 +550,19 @@ const Sidebar = ({
                       <span className="wa-unread-badge">{item.unread > 99 ? "99+" : item.unread}</span>
                     )}
                   </div>
+                </div>
+                <div className="wa-item-options-wrap">
+                  <button
+                    type="button"
+                    className="wa-item-options-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveItemMenuKey((prev) => prev === item.key ? null : item.key);
+                    }}
+                  >
+                    ▾
+                  </button>
+                  {activeItemMenuKey === item.key && renderItemOptionsMenu(item)}
                 </div>
               </button>
             ))}

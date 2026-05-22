@@ -22,13 +22,14 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 20px;
+  padding: 10px 20px;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(20px);
   position: relative;
   z-index: 10;
   flex-shrink: 0;
+  overflow: visible;
 }
 
 .qx-chat-header::after {
@@ -56,15 +57,15 @@
 
 .qx-chat-contact-avatar {
   position: relative;
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
 }
 
 .qx-chat-contact-avatar img,
 .qx-chat-contact-avatar span {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -85,12 +86,13 @@
   font-size: 15px;
   font-weight: 700;
   color: var(--text);
-  margin-bottom: 2px;
+  margin-bottom: 0;
+  line-height: 1.05;
 }
 
 .qx-online-label {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--success);
   letter-spacing: 0.5px;
 }
@@ -105,8 +107,55 @@
 .qx-chat-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   margin-left: auto;
+}
+
+.qx-chat-contact-trigger {
+  flex: 1;
+}
+
+.qx-header-menu-wrap {
+  position: relative;
+}
+
+.qx-header-menu {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  width: 250px;
+  max-height: 72vh;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  z-index: 120;
+  padding: 8px 0;
+}
+
+.qx-header-menu-item {
+  width: 100%;
+  text-align: left;
+  padding: 10px 16px;
+  color: var(--text);
+  border: none;
+  background: transparent;
+  font-size: 14px;
+}
+
+.qx-header-menu-item:hover {
+  background: var(--surface-hover);
+}
+
+.qx-header-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 0;
+}
+
+.qx-header-menu-item--danger {
+  color: var(--danger);
 }
 
 .qx-theme-select-wrap {
