@@ -96,7 +96,6 @@ const Sidebar = ({
   const [showMenu, setShowMenu] = useState(false);
   const [activeItemMenuKey, setActiveItemMenuKey] = useState(null);
   const [runningOptionKey, setRunningOptionKey] = useState("");
-  const [showArchivedSection, setShowArchivedSection] = useState(false);
 
   // Build unified list items based on active filter AND search
   const listItems = useMemo(() => {
@@ -125,9 +124,6 @@ const Sidebar = ({
         if (filter === "Unread" && unread === 0) return;
         // Filter by archived tab
         if (filter === "Archived" && !isArchived) return;
-        if (filter === "All" && isArchived) {
-          // keep archived out of main all list, render in Archived section
-        }
         // Filter by search
         if (!matchesSearch(name, preview)) return;
         
@@ -261,7 +257,14 @@ const Sidebar = ({
         <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:archiveChat`} onClick={() => runContactOption(item, "archiveChat")}>Archive chat</button>
         <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:toggleMuteNotifications`} onClick={() => runContactOption(item, "toggleMuteNotifications")}>{item.isMuted ? "Unmute notifications" : "Mute notifications"}</button>
         <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:togglePinChat`} onClick={() => runContactOption(item, "togglePinChat")}>{item.isPinned ? "Unpin chat" : "Pin chat"}</button>
-        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:markAsUnread`} onClick={() => runContactOption(item, "markAsUnread")}>Mark as unread</button>
+        <button
+          type="button"
+          className="wa-item-options-menu-item"
+          disabled={!isDirect || runningOptionKey === `${item.key}:${item.unread > 0 ? "markAsRead" : "markAsUnread"}`}
+          onClick={() => runContactOption(item, item.unread > 0 ? "markAsRead" : "markAsUnread")}
+        >
+          {item.unread > 0 ? "Mark as read" : "Mark as unread"}
+        </button>
         <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:toggleFavorite`} onClick={() => runContactOption(item, "toggleFavorite")}>Add to favorites</button>
         <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:toggleListTag`} onClick={() => runContactOption(item, "toggleListTag")}>Add to list</button>
         <div className="wa-item-options-menu-divider" />
@@ -465,32 +468,10 @@ const Sidebar = ({
 
         {filter === "All" && archivedItems.length > 0 && (
           <div className="wa-archived-section">
-            <button type="button" className="wa-archived-toggle" onClick={() => setShowArchivedSection((p) => !p)}>
+            <button type="button" className="wa-archived-toggle" onClick={() => setFilter("Archived")}>
               <span>Archived</span>
               <span className="wa-archived-count">{archivedItems.length}</span>
             </button>
-            {showArchivedSection && archivedItems.map((item) => (
-              <button
-                key={`arch_${item.key}`}
-                type="button"
-                className={`wa-chat-item ${item.isActive ? "wa-chat-item--active" : ""}`}
-                onClick={() => handleItemClick(item)}
-              >
-                <div className="wa-chat-avatar">
-                  <Avatar name={item.name} photoURL={item.photoURL} icon={item.icon} />
-                  <span className={`wa-status ${item.isOnline ? "wa-status--online" : ""}`} />
-                </div>
-                <div className="wa-chat-info">
-                  <div className="wa-chat-header">
-                    <span className="wa-chat-name">{item.name}</span>
-                    <span className="wa-chat-time">{formatTime(item.time)}</span>
-                  </div>
-                  <div className="wa-chat-preview">
-                    <span className="wa-preview-text">{item.preview}</span>
-                  </div>
-                </div>
-              </button>
-            ))}
           </div>
         )}
 

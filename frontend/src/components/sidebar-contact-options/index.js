@@ -2,6 +2,7 @@ import { archiveChat } from "./archiveChat";
 import { toggleMuteNotifications } from "./toggleMuteNotifications";
 import { togglePinChat } from "./togglePinChat";
 import { markAsUnread } from "./markAsUnread";
+import { markAsRead } from "./markAsRead";
 import { toggleFavorite } from "./toggleFavorite";
 import { toggleListTag } from "./toggleListTag";
 import { clearChat } from "./clearChat";
@@ -11,6 +12,7 @@ export const sidebarContactOptionsHandlers = {
   toggleMuteNotifications,
   togglePinChat,
   markAsUnread,
+  markAsRead,
   toggleFavorite,
   toggleListTag,
   clearChat,
