@@ -313,7 +313,7 @@ const ChatWindow = ({
                   startedAt: currentCall?.startedAt || new Date().toISOString(),
                 });
               }
-            } else if (signal.type === "candidate" && peerConnectionRef.current) {
+            } else if ((signal.type === "candidate" || signal.type === "ice") && peerConnectionRef.current) {
               const candidate = new RTCIceCandidate(signal.candidate);
               if (!hasRemoteDescRef.current) {
                 pendingIceCandidatesRef.current.push(candidate);
@@ -341,7 +341,7 @@ const ChatWindow = ({
     };
 
     run();
-    const timer = setInterval(run, 4000);
+    const timer = setInterval(run, 1200);
     return () => {
       alive = false;
       clearInterval(timer);

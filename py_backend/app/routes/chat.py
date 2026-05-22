@@ -6,6 +6,19 @@ router = APIRouter(prefix='/api/chat', tags=['chat'])
 ALLOWED_SIGNAL_TYPES={'offer','answer','candidate','ice','hangup'}
 
 
+def _normalize_signal_row(row: dict) -> dict:
+    signal = dict(row or {})
+    data = signal.pop('data', None)
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key not in signal:
+                signal[key] = value
+    signal['createdAt'] = signal.pop('created_at', None)
+    signal['from'] = signal.pop('sender', signal.get('from'))
+    signal['to'] = signal.pop('receiver', signal.get('to'))
+    return signal
+
+
 def _normalize_message_row(row: dict) -> dict:
     msg = dict(row or {})
     body = msg.pop('body', None)
@@ -78,7 +91,9 @@ def list_messages(threadType: str, threadId: str, uid: str|None=None):
 @router.get('/call-logs')
 def logs(conversationId: str): return {'logs': q('SELECT id,data,created_at FROM call_logs WHERE conversation_id=%s ORDER BY created_at DESC LIMIT 200',(conversationId,),fetch='all') or []}
 @router.get('/signals')
-def sig(conversationId: str, to: str): return {'signals': q('SELECT id,data,created_at,type,sender,receiver FROM signals WHERE conversation_id=%s AND receiver=%s ORDER BY created_at',(conversationId,to),fetch='all') or []}
+def sig(conversationId: str, to: str):
+    rows = q('SELECT id,data,created_at,type,sender,receiver FROM signals WHERE conversation_id=%s AND receiver=%s ORDER BY created_at',(conversationId,to),fetch='all') or []
+    return {'signals': [_normalize_signal_row(r) for r in rows]}
 @router.delete('/signals/{signal_id}')
 def delsig(signal_id: str, conversationId: str): q('DELETE FROM signals WHERE id=%s AND conversation_id=%s',(signal_id,conversationId)); return {'ok':True}
 @router.patch('/conversations/seen')
