@@ -72,6 +72,7 @@ const ChatWindow = ({
   const [showCallLogs, setShowCallLogs]       = useState(false);
   const [callLogs, setCallLogs]               = useState([]);
   const [editingMessageId, setEditingMessageId] = useState(null);
+  const [showContactProfile, setShowContactProfile] = useState(false);
 
   // ── Call state ────────────────────────────────────────────────────────────
   const [localCallStream, setLocalCallStream]   = useState(null);
@@ -1025,6 +1026,7 @@ const ChatWindow = ({
   return (
     <div className={`chat-window theme-${selectedTheme}`}>
       <ChatHeader
+        onOpenContactProfile={() => setShowContactProfile(true)}
         activeThreadType={activeThreadType}
         selectedUser={selectedUser}
         selectedGroup={selectedGroup}

@@ -19,14 +19,18 @@ const ChatHeader = ({
   authUser,
   onOpenGroupDetails,
   onOpenMobileSidebar,
+  onOpenContactProfile,
 }) => (
   <>
     <header className="qx-chat-header">
       <button type="button" className="qx-mobile-back" onClick={onOpenMobileSidebar} aria-label="Open conversations">☰</button>
       <button
         type="button"
-        className={`qx-chat-contact-trigger ${activeThreadType === "group" ? "qx-chat-contact-trigger--active" : ""}`}
-        onClick={() => activeThreadType === "group" && onOpenGroupDetails?.()}
+        className={`qx-chat-contact-trigger ${(activeThreadType === "group" || activeThreadType === "direct") ? "qx-chat-contact-trigger--active" : ""}`}
+        onClick={() => {
+          if (activeThreadType === "group") onOpenGroupDetails?.();
+          if (activeThreadType === "direct") onOpenContactProfile?.();
+        }}
       >
       <div className="qx-chat-contact-avatar">
         {(activeThreadType === "direct" && selectedUser?.photoURL) ||

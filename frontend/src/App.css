@@ -917,7 +917,7 @@ input, select, textarea { font: inherit; outline: none; }
   border: 2px solid var(--bg-secondary);
 }
 
-.qx-presence--online { background: var(--success); box-shadow: 0 0 8px var(--success); animation: qx-pulse 2s ease-in-out infinite; }
+.qx-presence--online { background: var(--success); box-shadow: 0 0 8px var(--success); }
 .qx-presence--offline { background: var(--text-muted); }
 
 .qx-contact-info { flex: 1; min-width: 0; }
