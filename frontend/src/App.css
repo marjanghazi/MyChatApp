@@ -308,7 +308,7 @@ input, select, textarea { font: inherit; outline: none; }
 .qx-shell {
   height: 100%;
   display: grid;
-  grid-template-columns: 380px 1fr;
+  grid-template-columns: 380px 8px 1fr;
   background: var(--bg-primary);
   color: var(--text);
   overflow: hidden;
@@ -1487,7 +1487,7 @@ input, select, textarea { font: inherit; outline: none; }
    RESPONSIVE
    ───────────────────────────────────────────── */
 @media (max-width: 1024px) {
-  .qx-shell { grid-template-columns: 320px 1fr; }
+  .qx-shell { grid-template-columns: 320px 8px 1fr; }
 }
 
 @media (max-width: 768px) {
@@ -1510,6 +1510,8 @@ input, select, textarea { font: inherit; outline: none; }
   .qx-shell.sidebar-open .qx-sidebar {
     left: 0;
   }
+
+  .qx-shell-resizer { display: none; }
 
   .qx-main {
     grid-column: 1;
@@ -1634,3 +1636,20 @@ textarea:focus-visible {
   border-radius: 12px;
   margin-bottom: 8px;
 }
+.qx-shell-resizer {
+  width: 8px;
+  cursor: col-resize;
+  position: relative;
+  background: transparent;
+}
+.qx-shell-resizer::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(180deg, transparent 0%, rgba(59,130,246,.45) 45%, rgba(56,189,248,.45) 55%, transparent 100%);
+  opacity: .55;
+}
+.qx-shell-resizer:hover::before { opacity: 1; }

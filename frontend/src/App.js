@@ -95,6 +95,8 @@ function App() {
   const [profileNameInput,  setProfileNameInput]  = useState("");
   const [statusText,        setStatusText]        = useState("");
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(380);
+  const isResizingRef = useRef(false);
   const [showGroupDetails,  setShowGroupDetails]  = useState(false);
 
   // ── Persist theme ────────────────────────────────────────────────────────
@@ -304,6 +306,27 @@ function App() {
 
   useEffect(() => { setProfileNameInput(profile?.displayName || ""); }, [profile?.displayName]);
   useEffect(() => { if (statusText) showToast(statusText); }, [statusText]);
+
+  useEffect(() => {
+    const onMove = (event) => {
+      if (!isResizingRef.current) return;
+      const min = 300;
+      const max = Math.min(620, window.innerWidth - 360);
+      const next = Math.min(max, Math.max(min, event.clientX));
+      setSidebarWidth(next);
+    };
+    const onUp = () => {
+      isResizingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
   useEffect(() => { setShowGroupDetails(false); }, [selectedGroup?.id, activeThreadType]);
   useEffect(() => {
     if (!selectedGroup?.id) return;
@@ -629,7 +652,7 @@ function App() {
 
   // ── Main shell ────────────────────────────────────────────────────────────
   return (
-    <div className={`qx-shell app-theme-${appTheme} ${showMobileSidebar ? "sidebar-open" : ""}`}>
+    <div className={`qx-shell app-theme-${appTheme} ${showMobileSidebar ? "sidebar-open" : ""}`} style={{ gridTemplateColumns: `${sidebarWidth}px 8px 1fr` }}>
 
       <Sidebar
         authUser={authUser}
@@ -678,6 +701,18 @@ function App() {
         onToggleFollowChannel={toggleFollowChannel}
         onLogout={logout}
         showMobileSidebar={showMobileSidebar}
+      />
+
+      <div
+        className="qx-shell-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        onMouseDown={() => {
+          isResizingRef.current = true;
+          document.body.style.cursor = "col-resize";
+          document.body.style.userSelect = "none";
+        }}
       />
 
       {/* Profile panel */}
