@@ -32,10 +32,19 @@ def init_db() -> None:
         conn.commit()
 
 
+def _adapt_param(value):
+    if isinstance(value, dict):
+        return psycopg2.extras.Json(value)
+    return value
+
+
+def _adapt_params(params: tuple) -> tuple:
+    return tuple(_adapt_param(v) for v in params)
+
 def q(query: str, params: tuple = (), fetch: str | None = None):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(query, params)
+            cur.execute(query, _adapt_params(params))
             rows = None
             if fetch == 'one':
                 rows = cur.fetchone()
