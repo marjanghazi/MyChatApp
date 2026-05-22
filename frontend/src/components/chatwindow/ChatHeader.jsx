@@ -90,9 +90,9 @@ const ChatHeader = ({
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </button>
-          <button type="button" className="qx-icon-btn" title={selectedMuted ? "Unmute chat" : "Mute chat"} onClick={setMute}>
+          {/* <button type="button" className="qx-icon-btn" title={selectedMuted ? "Unmute chat" : "Mute chat"} onClick={setMute}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
-          </button>
+          </button> */}
           <div className="qx-header-menu-wrap">
             <button
               type="button"
