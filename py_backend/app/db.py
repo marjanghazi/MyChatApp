@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
+
 import psycopg2
 import psycopg2.extras
+from psycopg2.pool import SimpleConnectionPool
+
+
+_POOL: SimpleConnectionPool | None = None
 
 
 def _dsn() -> str:
@@ -15,13 +20,23 @@ def _dsn() -> str:
     return f"host={host} port={port} dbname={db} user={user} password={password}"
 
 
+def _pool() -> SimpleConnectionPool:
+    global _POOL
+    if _POOL is None:
+        min_conn = int(os.getenv('POSTGRES_POOL_MIN', '1'))
+        max_conn = int(os.getenv('POSTGRES_POOL_MAX', '12'))
+        _POOL = SimpleConnectionPool(min_conn, max_conn, dsn=_dsn())
+    return _POOL
+
+
 @contextmanager
 def get_conn():
-    conn = psycopg2.connect(_dsn())
+    pool = _pool()
+    conn = pool.getconn()
     try:
         yield conn
     finally:
-        conn.close()
+        pool.putconn(conn)
 
 
 def init_db() -> None:
@@ -40,6 +55,7 @@ def _adapt_param(value):
 
 def _adapt_params(params: tuple) -> tuple:
     return tuple(_adapt_param(v) for v in params)
+
 
 def q(query: str, params: tuple = (), fetch: str | None = None):
     with get_conn() as conn:

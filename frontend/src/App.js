@@ -164,11 +164,11 @@ function App() {
 
     updatePresenceState(true);
     loadProfile();
-    heartbeatTimer = window.setInterval(() => updatePresenceState(!document.hidden), 60_000);
+    heartbeatTimer = window.setInterval(() => updatePresenceState(!document.hidden), 15_000);
     profileTimer = window.setInterval(() => {
       if (isPageHidden()) return;
       loadProfile();
-    }, 120_000);
+    }, 20_000);
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("beforeunload", markOffline);
 
@@ -200,7 +200,7 @@ function App() {
     };
 
     load();
-    const timer = setInterval(load, 60_000);
+    const timer = setInterval(load, 8_000);
     return () => {
       active = false;
       clearInterval(timer);
@@ -226,7 +226,7 @@ function App() {
     };
 
     load();
-    const timer = setInterval(load, 15_000);
+    const timer = setInterval(load, 3_000);
     return () => {
       active = false;
       clearInterval(timer);
