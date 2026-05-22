@@ -1103,6 +1103,30 @@ const ChatWindow = ({
         setEditingMessageId={setEditingMessageId}
       />
 
+
+
+      {showContactProfile && activeThreadType === "direct" && selectedUser && (
+        <div className="qx-contact-profile-overlay" onClick={() => setShowContactProfile(false)}>
+          <div className="qx-contact-profile-card" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="qx-contact-profile-close" onClick={() => setShowContactProfile(false)}>✕</button>
+            <div className="qx-contact-profile-head">
+              {selectedUser.photoURL ? (
+                <img src={selectedUser.photoURL} alt={selectedUser.displayName || "User"} />
+              ) : (
+                <div className="qx-contact-profile-fallback">{(selectedUser.displayName || "U").charAt(0).toUpperCase()}</div>
+              )}
+              <h3>{selectedUser.displayName || "User"}</h3>
+              <p>{selectedUser.isOnline ? "Online" : "Offline"}</p>
+            </div>
+            <div className="qx-contact-profile-grid">
+              <div><span>Phone</span><strong>{selectedUser.phoneNumber || "Not shared"}</strong></div>
+              <div><span>Email</span><strong>{selectedUser.email || "Not shared"}</strong></div>
+              <div><span>Security</span><strong>End-to-end encrypted</strong></div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ChatComposer
         activeThreadType={activeThreadType}
         selectedPartnerTyping={selectedPartnerTyping}

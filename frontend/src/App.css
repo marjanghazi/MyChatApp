@@ -530,6 +530,7 @@ input, select, textarea { font: inherit; outline: none; }
   border-radius: 50%;
   background: var(--accent-a);
   border: 2px solid var(--bg-secondary);
+  pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -909,12 +910,13 @@ input, select, textarea { font: inherit; outline: none; }
 
 .qx-presence {
   position: absolute;
-  bottom: 1px;
-  right: 1px;
-  width: 11px;
-  height: 11px;
+  bottom: -1px;
+  right: -1px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   border: 2px solid var(--bg-secondary);
+  pointer-events: none;
 }
 
 .qx-presence--online { background: var(--success); box-shadow: 0 0 8px var(--success); }
