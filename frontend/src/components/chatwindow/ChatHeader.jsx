@@ -1,4 +1,6 @@
 
+import { useState } from "react";
+
 const ChatHeader = ({
   activeThreadType,
   selectedUser,
@@ -20,8 +22,10 @@ const ChatHeader = ({
   onOpenGroupDetails,
   onOpenMobileSidebar,
   onOpenContactProfile,
-}) => (
-  <>
+}) => {
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+
+  return (
     <header className="qx-chat-header">
       <button type="button" className="qx-mobile-back" onClick={onOpenMobileSidebar} aria-label="Open conversations">☰</button>
       <button
@@ -88,6 +92,36 @@ const ChatHeader = ({
           <button type="button" className="qx-icon-btn" title={selectedMuted ? "Unmute chat" : "Mute chat"} onClick={setMute}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
           </button>
+          <div className="qx-header-menu-wrap">
+            <button
+              type="button"
+              className="qx-icon-btn"
+              title="More"
+              onClick={() => setShowHeaderMenu((p) => !p)}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+            </button>
+            {showHeaderMenu && (
+              <div className="qx-header-menu" onClick={(e) => e.stopPropagation()}>
+                <button type="button" className="qx-header-menu-item" onClick={onOpenContactProfile}>Contact info</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => setShowCallLogs((p) => !p)}>Search</button>
+                <button type="button" className="qx-header-menu-item">Select messages</button>
+                <button type="button" className="qx-header-menu-item" onClick={setMute}>{selectedMuted ? "Unmute notifications" : "Mute notifications"}</button>
+                <button type="button" className="qx-header-menu-item">Disappearing messages</button>
+                <button type="button" className="qx-header-menu-item">Add to Favorites</button>
+                <button type="button" className="qx-header-menu-item">Add to list</button>
+                <button type="button" className="qx-header-menu-item">Close chat</button>
+                <div className="qx-header-menu-divider" />
+                <button type="button" className="qx-header-menu-item">Send call link</button>
+                <button type="button" className="qx-header-menu-item">Schedule call</button>
+                <div className="qx-header-menu-divider" />
+                <button type="button" className="qx-header-menu-item">Report</button>
+                <button type="button" className="qx-header-menu-item">Block</button>
+                <button type="button" className="qx-header-menu-item" onClick={deleteChatHistory}>Clear chat</button>
+                <button type="button" className="qx-header-menu-item qx-header-menu-item--danger" onClick={deleteChatHistory}>Delete chat</button>
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <div className="qx-chat-actions">
@@ -105,7 +139,7 @@ const ChatHeader = ({
         </div>
       )}
     </header>
-  </>
-);
+  );
+};
 
 export default ChatHeader;

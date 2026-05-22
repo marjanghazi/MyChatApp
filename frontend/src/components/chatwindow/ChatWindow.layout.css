@@ -29,6 +29,7 @@
   position: relative;
   z-index: 10;
   flex-shrink: 0;
+  overflow: visible;
 }
 
 .qx-chat-header::after {
@@ -112,6 +113,49 @@
 
 .qx-chat-contact-trigger {
   flex: 1;
+}
+
+.qx-header-menu-wrap {
+  position: relative;
+}
+
+.qx-header-menu {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  width: 250px;
+  max-height: 72vh;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  z-index: 120;
+  padding: 8px 0;
+}
+
+.qx-header-menu-item {
+  width: 100%;
+  text-align: left;
+  padding: 10px 16px;
+  color: var(--text);
+  border: none;
+  background: transparent;
+  font-size: 14px;
+}
+
+.qx-header-menu-item:hover {
+  background: var(--surface-hover);
+}
+
+.qx-header-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 0;
+}
+
+.qx-header-menu-item--danger {
+  color: var(--danger);
 }
 
 .qx-theme-select-wrap {
