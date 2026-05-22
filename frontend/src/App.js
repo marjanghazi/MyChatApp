@@ -661,13 +661,15 @@ function App() {
           <button type="button" className="qx-rail-btn" title="Communities">👥</button>
         </div>
         <div className="qx-nav-rail-bottom">
-          <button type="button" className="qx-rail-btn" title="Settings" onClick={() => setShowProfilePanel((p) => !p)}>⚙</button>
-          <img
-            className="qx-rail-profile"
-            src={profile?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.displayName || "U")}&background=4d7fff&color=fff&bold=true`}
-            alt="Profile"
-            onClick={() => setShowProfilePanel((p) => !p)}
-          />
+          <button
+            type="button"
+            className="qx-rail-theme-toggle"
+            title={`Switch to ${appTheme === "dark" ? "light" : "dark"} mode`}
+            aria-label={`Switch to ${appTheme === "dark" ? "light" : "dark"} mode`}
+            onClick={() => setAppTheme((p) => p === "dark" ? "light" : "dark")}
+          >
+            {appTheme === "dark" ? "☀" : "🌙"}
+          </button>
         </div>
       </aside>
 

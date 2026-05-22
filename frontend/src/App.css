@@ -320,7 +320,23 @@ input, select, textarea { font: inherit; outline: none; }
 .qx-nav-rail-top,.qx-nav-rail-bottom { display:flex; flex-direction:column; gap:10px; align-items:center; }
 .qx-rail-btn { width:40px; height:40px; border-radius:12px; background:var(--surface-hover); color:var(--text-dim); border:1px solid var(--border); }
 .qx-rail-btn--active { color:var(--accent-c); border-color:var(--accent-c); }
-.qx-rail-profile { width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid var(--border-glow); cursor:pointer; }
+.qx-rail-theme-toggle {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid var(--border-glow);
+  background: var(--surface-hover);
+  color: var(--text);
+  font-size: 18px;
+  display: grid;
+  place-items: center;
+  transition: all 0.2s ease;
+}
+.qx-rail-theme-toggle:hover {
+  border-color: var(--accent-c);
+  box-shadow: 0 0 12px var(--glow-c);
+  transform: translateY(-1px);
+}
 
 /* ─────────────────────────────────────────────
    SIDEBAR
