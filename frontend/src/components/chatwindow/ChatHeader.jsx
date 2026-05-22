@@ -22,6 +22,7 @@ const ChatHeader = ({
   onOpenGroupDetails,
   onOpenMobileSidebar,
   onOpenContactProfile,
+  onHeaderMenuAction,
 }) => {
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
 
@@ -103,22 +104,22 @@ const ChatHeader = ({
             </button>
             {showHeaderMenu && (
               <div className="qx-header-menu" onClick={(e) => e.stopPropagation()}>
-                <button type="button" className="qx-header-menu-item" onClick={onOpenContactProfile}>Contact info</button>
-                <button type="button" className="qx-header-menu-item" onClick={() => setShowCallLogs((p) => !p)}>Search</button>
-                <button type="button" className="qx-header-menu-item">Select messages</button>
-                <button type="button" className="qx-header-menu-item" onClick={setMute}>{selectedMuted ? "Unmute notifications" : "Mute notifications"}</button>
-                <button type="button" className="qx-header-menu-item">Disappearing messages</button>
-                <button type="button" className="qx-header-menu-item">Add to Favorites</button>
-                <button type="button" className="qx-header-menu-item">Add to list</button>
-                <button type="button" className="qx-header-menu-item">Close chat</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("contactInfo")}>Contact info</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("search")}>Search</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("selectMessages")}>Select messages</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("toggleMute")}>{selectedMuted ? "Unmute notifications" : "Mute notifications"}</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("disappearingMessages")}>Disappearing messages</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("toggleFavorite")}>Add to Favorites</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("toggleList")}>Add to list</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("closeChat")}>Close chat</button>
                 <div className="qx-header-menu-divider" />
-                <button type="button" className="qx-header-menu-item">Send call link</button>
-                <button type="button" className="qx-header-menu-item">Schedule call</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("sendCallLink")}>Send call link</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("scheduleCall")}>Schedule call</button>
                 <div className="qx-header-menu-divider" />
-                <button type="button" className="qx-header-menu-item">Report</button>
-                <button type="button" className="qx-header-menu-item">Block</button>
-                <button type="button" className="qx-header-menu-item" onClick={deleteChatHistory}>Clear chat</button>
-                <button type="button" className="qx-header-menu-item qx-header-menu-item--danger" onClick={deleteChatHistory}>Delete chat</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("report")}>Report</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("block")}>Block</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("clearChat")}>Clear chat</button>
+                <button type="button" className="qx-header-menu-item qx-header-menu-item--danger" onClick={() => onHeaderMenuAction?.("deleteChat")}>Delete chat</button>
               </div>
             )}
           </div>

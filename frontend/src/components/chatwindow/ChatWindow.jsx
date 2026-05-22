@@ -17,6 +17,7 @@ import ChatToolbar from "./ChatToolbar";
 import ChatCallPanels from "./ChatCallPanels";
 import ChatMessages from "./ChatMessages";
 import ChatComposer from "./ChatComposer";
+import { headerOptionsHandlers } from "./header-options";
 import {
   deleteChatMessageForEveryone,
   deleteChatMessageForMe,
@@ -1005,6 +1006,27 @@ const ChatWindow = ({
     }
   };
 
+  const handleHeaderMenuAction = async (actionKey) => {
+    const fn = headerOptionsHandlers[actionKey];
+    if (!fn) return;
+    try {
+      await fn({
+        selectedConversationId,
+        selectedConversation,
+        authUser,
+        setShowCallLogs,
+        setStatusText,
+        setMute,
+        deleteChatHistory,
+        onOpenContactProfile: () => setShowContactProfile(true),
+        onOpenMobileSidebar,
+        navigatorObj: typeof navigator !== "undefined" ? navigator : null,
+      });
+    } catch {
+      setStatusText("Action failed. Please try again.");
+    }
+  };
+
   const toggleFollowChannel = async (channel) => {
     if (!authUser?.uid || !channel) return;
     // Prefer parent handler if provided
@@ -1027,6 +1049,7 @@ const ChatWindow = ({
     <div className={`chat-window theme-${selectedTheme}`}>
       <ChatHeader
         onOpenContactProfile={() => setShowContactProfile(true)}
+        onHeaderMenuAction={handleHeaderMenuAction}
         activeThreadType={activeThreadType}
         selectedUser={selectedUser}
         selectedGroup={selectedGroup}
