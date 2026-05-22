@@ -5,6 +5,28 @@ from app.errors import must, must_thread_type
 router = APIRouter(prefix='/api/chat', tags=['chat'])
 ALLOWED_SIGNAL_TYPES={'offer','answer','candidate','ice','hangup'}
 
+
+def _normalize_message_row(row: dict) -> dict:
+    msg = dict(row or {})
+    body = msg.pop('body', None)
+    if isinstance(body, dict):
+        for key, value in body.items():
+            if key not in msg:
+                msg[key] = value
+    msg['createdAt'] = msg.pop('created_at', None)
+    msg['editedAt'] = msg.pop('edited_at', None)
+    msg['deletedAt'] = msg.pop('deleted_at', None)
+    msg['senderId'] = msg.pop('sender_id', None)
+    msg['receiverId'] = msg.pop('receiver_id', None)
+    msg['senderName'] = msg.pop('sender_name', None)
+    msg['threadType'] = msg.pop('thread_type', None)
+    msg['threadId'] = msg.pop('thread_id', None)
+    msg['deliveredTo'] = msg.pop('delivered_to', []) or []
+    msg['readBy'] = msg.pop('read_by', []) or []
+    msg['deletedFor'] = msg.pop('deleted_for', []) or []
+    msg['deletedForEveryone'] = bool(msg.pop('deleted_for_everyone', False))
+    return msg
+
 @router.post('/messages/send')
 def send(body: dict):
     tt=body.get('threadType'); must_thread_type(tt); must(body.get('actorUid'),'actorUid'); must(body.get('threadId'),'threadId')
@@ -51,7 +73,7 @@ def flag(body: dict):
 def list_messages(threadType: str, threadId: str, uid: str|None=None):
     must_thread_type(threadType); rows=q('SELECT * FROM messages WHERE thread_type=%s AND thread_id=%s ORDER BY created_at LIMIT 300', (threadType,threadId), fetch='all') or []
     if uid: rows=[r for r in rows if uid not in (r['deleted_for'] or [])]
-    return {'messages':[dict(r) for r in rows]}
+    return {'messages':[_normalize_message_row(r) for r in rows]}
 
 @router.get('/call-logs')
 def logs(conversationId: str): return {'logs': q('SELECT id,data,created_at FROM call_logs WHERE conversation_id=%s ORDER BY created_at DESC LIMIT 200',(conversationId,),fetch='all') or []}
