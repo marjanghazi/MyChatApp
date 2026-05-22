@@ -3,7 +3,7 @@ from __future__ import annotations
 import secrets
 
 from fastapi import APIRouter, HTTPException
-from passlib.hash import bcrypt_sha256
+from passlib.hash import pbkdf2_sha256
 
 from app.db import q
 from app.errors import must
@@ -12,12 +12,12 @@ router = APIRouter(prefix='/api/auth', tags=['auth'])
 
 
 def _hash_password(value: str) -> str:
-    # bcrypt_sha256 pre-hashes the input and avoids bcrypt's 72-byte password limit.
-    return bcrypt_sha256.hash(value)
+    # pbkdf2_sha256 avoids bcrypt backend/version issues and has no 72-byte limit.
+    return pbkdf2_sha256.hash(value)
 
 
 def _verify_password(value: str, hashed: str) -> bool:
-    return bcrypt_sha256.verify(value, hashed)
+    return pbkdf2_sha256.verify(value, hashed)
 
 
 def _to_user(row):
