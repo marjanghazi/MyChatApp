@@ -8,11 +8,9 @@ from pathlib import Path
 from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, HTTPException, Request
-from google.api_core.exceptions import NotFound as GcsNotFound
 from fastapi.responses import FileResponse
 
 from app.errors import must
-from app.firebase_client import storage_bucket
 
 router = APIRouter(prefix='/api/media', tags=['media'])
 
@@ -35,11 +33,6 @@ def assert_allowed(path: str) -> None:
         raise HTTPException(status_code=403, detail=f'storagePath not allowed: {path}')
 
 
-def signed_url(path: str) -> str:
-    blob = storage_bucket().blob(path)
-    return blob.generate_signed_url(version='v4', expiration=60 * 60 * 24 * 365 * 400, method='GET')
-
-
 def _resolve_local_file(storage_path: str) -> Path:
     clean_path = storage_path.strip().lstrip('/')
     assert_allowed(clean_path)
@@ -59,17 +52,6 @@ def _save_local(storage_path: str, content: bytes) -> None:
     file_path = _resolve_local_file(storage_path)
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_bytes(content)
-
-
-def _upload_with_fallback(request: Request, storage_path: str, content_type: str, data: bytes) -> dict:
-    try:
-        bucket = storage_bucket()
-        blob = bucket.blob(storage_path)
-        blob.upload_from_string(data, content_type=content_type)
-        return {'ok': True, 'url': signed_url(storage_path), 'path': storage_path, 'storage': 'firebase'}
-    except Exception:  # noqa: BLE001
-        _save_local(storage_path, data)
-        return {'ok': True, 'url': _local_url_for(request, storage_path), 'path': storage_path, 'storage': 'local'}
 
 
 @router.get('/local/{encoded_path:path}')
@@ -99,7 +81,8 @@ def upload(body: dict, request: Request):
     file_path = f'{folder}/{uid}/{safe_name}'
     assert_allowed(file_path)
     data = base64.b64decode(data_base64)
-    return _upload_with_fallback(request, file_path, content_type, data)
+    _save_local(file_path, data)
+    return {'ok': True, 'url': _local_url_for(request, file_path), 'path': file_path, 'storage': 'local'}
 
 
 @router.post('/upload-by-path')
@@ -113,7 +96,8 @@ def upload_by_path(body: dict, request: Request):
     must(data_base64, 'dataBase64')
     assert_allowed(storage_path)
     data = base64.b64decode(data_base64)
-    return _upload_with_fallback(request, storage_path, content_type, data)
+    _save_local(storage_path, data)
+    return {'ok': True, 'url': _local_url_for(request, storage_path), 'path': storage_path, 'storage': 'local'}
 
 
 @router.post('/delete-by-path')
@@ -122,21 +106,8 @@ def delete_by_path(body: dict):
     must(storage_path, 'storagePath')
     assert_allowed(storage_path)
 
-    deleted = False
-    try:
-        bucket = storage_bucket()
-        blob = bucket.blob(storage_path)
-        if blob.exists():
-            blob.delete()
-            deleted = True
-    except Exception:  # noqa: BLE001
-        pass
-
     file_path = _resolve_local_file(storage_path)
     if file_path.exists():
         file_path.unlink()
-        deleted = True
-
-    if not deleted:
-        return {'ok': True, 'message': 'File already absent.'}
-    return {'ok': True}
+        return {'ok': True}
+    return {'ok': True, 'message': 'File already absent.'}

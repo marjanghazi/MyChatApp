@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import cors_origins, load_env
-from app.firebase_client import init_firebase
+from app.db import init_db
 from app.routes.auth import router as auth_router
 from app.routes.chat import router as chat_router
 from app.routes.community import router as community_router
@@ -16,7 +16,7 @@ from app.routes.thread import router as thread_router
 from app.routes.users import router as users_router
 
 load_env()
-init_firebase()
+init_db()
 
 app = FastAPI(title='pqc-chat-backend', version='1.1.0')
 

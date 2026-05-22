@@ -1,91 +1,37 @@
 from __future__ import annotations
-
-import os
-import httpx
+import secrets
 from fastapi import APIRouter, HTTPException
-
+from passlib.hash import bcrypt
+from app.db import q
 from app.errors import must
 
 router = APIRouter(prefix='/api/auth', tags=['auth'])
 
-
-def firebase_web_api_key() -> str:
-    return (
-        os.getenv('FIREBASE_WEB_API_KEY')
-        or os.getenv('FIREBASE_API_KEY')
-        or os.getenv('REACT_APP_FIREBASE_API_KEY')
-        or ''
-    )
-
-
-def to_user(data: dict) -> dict:
-    return {
-        'uid': data.get('localId'),
-        'email': data.get('email'),
-        'displayName': data.get('displayName') or '',
-        'photoURL': data.get('photoUrl') or '',
-        'idToken': data.get('idToken'),
-        'refreshToken': data.get('refreshToken'),
-    }
-
-
-async def auth_request(path: str, payload: dict) -> dict:
-    api_key = firebase_web_api_key()
-    if not api_key:
-        raise HTTPException(
-            status_code=500,
-            detail='Firebase Web API key is missing. Set FIREBASE_WEB_API_KEY, FIREBASE_API_KEY, or REACT_APP_FIREBASE_API_KEY.',
-        )
-
-    url = f'https://identitytoolkit.googleapis.com/v1/{path}?key={api_key}'
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(url, json=payload)
-    data = resp.json()
-    if resp.status_code >= 400:
-        message = (data.get('error') or {}).get('message') or 'Authentication request failed.'
-        raise HTTPException(status_code=400, detail=message)
-    return data
-
+def _to_user(row):
+    return {'uid': row['uid'], 'email': row['email'], 'displayName': row['display_name'], 'photoURL': row['photo_url'], 'idToken': secrets.token_urlsafe(24), 'refreshToken': secrets.token_urlsafe(24)}
 
 @router.post('/register', status_code=201)
-async def register(body: dict):
-    email = body.get('email')
-    password = body.get('password')
-    display_name = (body.get('displayName') or '').strip()
-    must(email, 'email')
-    must(password, 'password')
-
-    data = await auth_request('accounts:signUp', {'email': email, 'password': password, 'returnSecureToken': True})
-    final = data
-    if display_name:
-        final = await auth_request(
-            'accounts:update',
-            {'idToken': data.get('idToken'), 'displayName': display_name, 'returnSecureToken': True},
-        )
-    return {'user': to_user(final)}
-
+def register(body: dict):
+    email = body.get('email'); password = body.get('password'); must(email,'email'); must(password,'password')
+    uid = body.get('uid') or secrets.token_hex(12)
+    try:
+        q("INSERT INTO users(uid,email,password_hash,display_name,is_online) VALUES (%s,%s,%s,%s,true)", (uid,email,bcrypt.hash(password), body.get('displayName') or ''))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    row = q("SELECT * FROM users WHERE uid=%s", (uid,), fetch='one')
+    return {'user': _to_user(row)}
 
 @router.post('/login')
-async def login(body: dict):
-    email = body.get('email')
-    password = body.get('password')
-    must(email, 'email')
-    must(password, 'password')
-    data = await auth_request('accounts:signInWithPassword', {'email': email, 'password': password, 'returnSecureToken': True})
-    return {'user': to_user(data)}
-
+def login(body: dict):
+    email = body.get('email'); password = body.get('password'); must(email,'email'); must(password,'password')
+    row = q("SELECT * FROM users WHERE email=%s", (email,), fetch='one')
+    if not row or not bcrypt.verify(password, row['password_hash']):
+        raise HTTPException(status_code=400, detail='Invalid credentials')
+    return {'user': _to_user(row)}
 
 @router.post('/update-profile')
-async def update_profile(body: dict):
-    id_token = body.get('idToken')
-    must(id_token, 'idToken')
-    data = await auth_request(
-        'accounts:update',
-        {
-            'idToken': id_token,
-            'displayName': body.get('displayName') or '',
-            'photoUrl': body.get('photoURL') or '',
-            'returnSecureToken': True,
-        },
-    )
-    return {'user': to_user(data)}
+def update_profile(body: dict):
+    uid = body.get('uid'); must(uid,'uid')
+    q("UPDATE users SET display_name=%s, photo_url=%s, updated_at=now() WHERE uid=%s", (body.get('displayName') or '', body.get('photoURL') or '', uid))
+    row = q("SELECT * FROM users WHERE uid=%s", (uid,), fetch='one')
+    return {'user': _to_user(row)}
