@@ -1,9 +1,23 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter
 
 from app.db import q
 from app.errors import must
 
 router = APIRouter(prefix='/api/thread', tags=['thread'])
+
+
+def _is_currently_online(row: dict) -> bool:
+    if not row:
+        return False
+    active_at = row.get('active_at')
+    if isinstance(active_at, datetime):
+        now = datetime.now(timezone.utc)
+        if active_at.tzinfo is None:
+            active_at = active_at.replace(tzinfo=timezone.utc)
+        return (now - active_at).total_seconds() <= 45
+    return bool(row.get('is_online'))
 
 
 def _to_user_payload(row: dict) -> dict:
@@ -14,7 +28,7 @@ def _to_user_payload(row: dict) -> dict:
         'phoneNumber': row.get('phone_number') or '',
         'phoneLookupKeys': row.get('phone_lookup_keys') or [],
         'contacts': row.get('contacts') or [],
-        'isOnline': bool(row.get('is_online')),
+        'isOnline': _is_currently_online(row),
         'lastSeen': row.get('last_seen'),
         'activeAt': row.get('active_at'),
         'createdAt': row.get('created_at'),
