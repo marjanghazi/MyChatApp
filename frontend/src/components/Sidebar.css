@@ -491,6 +491,32 @@
   text-transform: uppercase;
 }
 
+.wa-archived-section {
+  border-bottom: 1px solid var(--border);
+}
+
+.wa-archived-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  color: var(--text-dim);
+  font-size: 15px;
+  border: none;
+  background: transparent;
+}
+
+.wa-archived-toggle:hover {
+  background: var(--surface-hover);
+}
+
+.wa-archived-count {
+  color: var(--accent-a);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
 /* Chat Item */
 .wa-chat-item {
   display: flex;
