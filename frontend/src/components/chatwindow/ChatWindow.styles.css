@@ -1209,3 +1209,10 @@
     transform: translateX(0);
   }
 }
+
+.qx-chat-contact-meta{display:flex;flex-direction:column;gap:4px;}
+.qx-chat-contact-badges{display:flex;gap:6px;flex-wrap:wrap;}
+.qx-contact-badge{font-size:10px;padding:3px 8px;border-radius:999px;background:rgba(74,222,128,.14);color:#86efac;border:1px solid rgba(74,222,128,.3);font-weight:600;}
+.qx-contact-badge--soft{background:rgba(59,130,246,.12);color:#93c5fd;border-color:rgba(59,130,246,.35);}
+.qx-chat-contact-trigger{padding:6px 10px;border-radius:14px;transition:background .2s ease, border-color .2s ease;border:1px solid transparent;}
+.qx-chat-contact-trigger:hover{background:rgba(255,255,255,.03);border-color:rgba(59,130,246,.28);}

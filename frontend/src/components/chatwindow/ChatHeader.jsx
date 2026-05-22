@@ -56,14 +56,18 @@ const ChatHeader = ({
       </div>
       <div className="qx-chat-contact-meta">
         <h3>{activeThreadName}</h3>
+        <div className="qx-chat-contact-badges">
+          <span className="qx-contact-badge">PQ Secure</span>
+          <span className="qx-contact-badge qx-contact-badge--soft">Kyber + Dilithium</span>
+        </div>
         <span className={activeThreadType === "direct" && selectedUser?.isOnline ? "qx-online-label" : "qx-offline-label"}>
           {activeThreadType === "group"
-            ? `${(selectedGroup?.memberIds || []).length} members`
+            ? `${(selectedGroup?.memberIds || []).length} members • Secure Group`
             : activeThreadType === "channel"
-            ? `${(selectedChannel?.followerIds || []).length} followers`
+            ? `${(selectedChannel?.followerIds || []).length} followers • Broadcast`
             : selectedUser?.isOnline
-            ? "● Online"
-            : "○ Offline"}
+            ? "● Online • End-to-end secure"
+            : "○ Offline • Last seen recently"}
         </span>
       </div>
       </button>

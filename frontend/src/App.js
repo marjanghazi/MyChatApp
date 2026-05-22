@@ -29,6 +29,7 @@ import {
   upsertUserProfile,
 } from "./services/userService";
 import { uploadMedia } from "./services/mediaService";
+import { showToast } from "./services/alertService";
 import { fetchChannels, fetchConversations, fetchGroups, fetchUsers, markDelivered } from "./services/threadService";
 import "./App.css";
 import PublicHomePage from "./pages/PublicHomePage";
@@ -302,6 +303,7 @@ function App() {
   }, [authUser?.uid]);
 
   useEffect(() => { setProfileNameInput(profile?.displayName || ""); }, [profile?.displayName]);
+  useEffect(() => { if (statusText) showToast(statusText); }, [statusText]);
   useEffect(() => { setShowGroupDetails(false); }, [selectedGroup?.id, activeThreadType]);
   useEffect(() => {
     if (!selectedGroup?.id) return;

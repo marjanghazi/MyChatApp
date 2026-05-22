@@ -35,6 +35,7 @@ import {
   clearConversationForUser,
 } from "../../services/chatService";
 import { uploadMedia } from "../../services/mediaService";
+import { showToast } from "../../services/alertService";
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -138,6 +139,8 @@ const ChatWindow = ({
 
   // Keep ref in sync so WebRTC event handlers always see current call state
   useEffect(() => { selectedCallRef.current = selectedCall; }, [selectedCall]);
+
+  useEffect(() => { if (statusText) showToast(statusText); }, [statusText]);
 
   const visibleMessages = useMemo(() => {
     const v = chatSearch.trim().toLowerCase();
