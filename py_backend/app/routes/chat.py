@@ -82,7 +82,17 @@ def sig(conversationId: str, to: str): return {'signals': q('SELECT id,data,crea
 @router.delete('/signals/{signal_id}')
 def delsig(signal_id: str, conversationId: str): q('DELETE FROM signals WHERE id=%s AND conversation_id=%s',(signal_id,conversationId)); return {'ok':True}
 @router.patch('/conversations/seen')
-def seen(body: dict): must(body.get('conversationId'),'conversationId'); q("UPDATE conversations SET last_message_status='seen',updated_at=now() WHERE id=%s",(body['conversationId'],)); return {'ok':True}
+def seen(body: dict):
+    must(body.get('conversationId'),'conversationId')
+    must(body.get('uid'),'uid')
+    conversation_id = body['conversationId']
+    uid = body['uid']
+    q(
+        'UPDATE messages SET delivered_to=array_append(delivered_to,%s), read_by=array_append(read_by,%s) WHERE thread_type=%s AND thread_id=%s AND receiver_id=%s AND NOT (%s = ANY(read_by))',
+        (uid, uid, 'direct', conversation_id, uid, uid),
+    )
+    q("UPDATE conversations SET last_message_status='seen',updated_at=now() WHERE id=%s",(conversation_id,))
+    return {'ok':True}
 @router.patch('/conversations/meta')
 def meta(body: dict): must(body.get('conversationId'),'conversationId'); patch=body.get('patch') or {}; q('UPDATE conversations SET typing=COALESCE(%s,typing), unread_by=COALESCE(%s,unread_by), updated_at=now() WHERE id=%s',(patch.get('typing'),patch.get('unreadBy'),body['conversationId'])); return {'ok':True}
 @router.post('/conversations/call-logs')

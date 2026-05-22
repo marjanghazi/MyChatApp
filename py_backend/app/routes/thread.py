@@ -39,6 +39,16 @@ def conv(uid: str):
 
 @router.patch('/conversations/{conversation_id}/delivered')
 def d(conversation_id: str):
+    conv = q('SELECT participants,last_message_sender FROM conversations WHERE id=%s', (conversation_id,), fetch='one')
+    if conv:
+        sender = conv.get('last_message_sender')
+        participants = conv.get('participants') or []
+        recipient = next((u for u in participants if u and u != sender), None)
+        if recipient:
+            q(
+                'UPDATE messages SET delivered_to = array_append(delivered_to,%s) WHERE thread_type=%s AND thread_id=%s AND receiver_id=%s AND NOT (%s = ANY(delivered_to))',
+                (recipient, 'direct', conversation_id, recipient, recipient),
+            )
     q("UPDATE conversations SET last_message_status='delivered',updated_at=now() WHERE id=%s", (conversation_id,))
     return {'ok': True}
 
