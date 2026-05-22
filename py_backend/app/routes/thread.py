@@ -24,6 +24,25 @@ def _to_user_payload(row: dict) -> dict:
     }
 
 
+
+
+def _to_conversation_payload(row: dict) -> dict:
+    return {
+        'id': row.get('id'),
+        'participants': row.get('participants') or [],
+        'participantPhones': row.get('participant_phones') or [],
+        'lastMessage': row.get('last_message') or '',
+        'lastMessageType': row.get('last_message_type'),
+        'lastMessageSender': row.get('last_message_sender'),
+        'lastMessageStatus': row.get('last_message_status'),
+        'lastMessageAt': row.get('last_message_at'),
+        'typing': row.get('typing') or {},
+        'unreadBy': row.get('unread_by') or {},
+        'clearedAtBy': row.get('cleared_at_by') or {},
+        'createdAt': row.get('created_at'),
+        'updatedAt': row.get('updated_at'),
+    }
+
 @router.get('/users')
 def users(excludeUid: str | None = None):
     rows = q('SELECT * FROM users', fetch='all') or []
@@ -34,7 +53,7 @@ def users(excludeUid: str | None = None):
 def conv(uid: str):
     must(uid, 'uid')
     rows = q('SELECT * FROM conversations WHERE %s = ANY(participants)', (uid,), fetch='all') or []
-    return {'conversations': {r['id']: dict(r) for r in rows}}
+    return {'conversations': {r['id']: _to_conversation_payload(r) for r in rows}}
 
 
 @router.patch('/conversations/{conversation_id}/delivered')
