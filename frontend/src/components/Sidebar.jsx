@@ -92,6 +92,7 @@ const Sidebar = ({
   const [filter, setFilter] = useState("All");
   const [showAddContact, setShowAddContact] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [activeItemMenuKey, setActiveItemMenuKey] = useState(null);
 
   // Build unified list items based on active filter AND search
   const listItems = useMemo(() => {
@@ -213,6 +214,23 @@ const Sidebar = ({
   const markAllAsRead = () => {
     // TODO: Implement mark all as read functionality
     setShowMenu(false);
+  };
+
+  const renderItemOptionsMenu = (item) => {
+    const isGroup = item.type === "group";
+    return (
+      <div className="wa-item-options-menu" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="wa-item-options-menu-item">Archive chat</button>
+        <button type="button" className="wa-item-options-menu-item">Mute notifications</button>
+        <button type="button" className="wa-item-options-menu-item">{item.isPinned ? "Unpin chat" : "Pin chat"}</button>
+        <button type="button" className="wa-item-options-menu-item">Mark as unread</button>
+        <button type="button" className="wa-item-options-menu-item">Add to favorites</button>
+        <button type="button" className="wa-item-options-menu-item">Add to list</button>
+        <div className="wa-item-options-menu-divider" />
+        <button type="button" className="wa-item-options-menu-item">Clear chat</button>
+        {isGroup && <button type="button" className="wa-item-options-menu-item wa-item-options-menu-item-danger">Exit group</button>}
+      </div>
+    );
   };
 
   return (
@@ -444,6 +462,19 @@ const Sidebar = ({
                     )}
                   </div>
                 </div>
+                <div className="wa-item-options-wrap">
+                  <button
+                    type="button"
+                    className="wa-item-options-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveItemMenuKey((prev) => prev === item.key ? null : item.key);
+                    }}
+                  >
+                    ▾
+                  </button>
+                  {activeItemMenuKey === item.key && renderItemOptionsMenu(item)}
+                </div>
               </button>
             ))}
           </>
@@ -492,6 +523,19 @@ const Sidebar = ({
                       <span className="wa-unread-badge">{item.unread > 99 ? "99+" : item.unread}</span>
                     )}
                   </div>
+                </div>
+                <div className="wa-item-options-wrap">
+                  <button
+                    type="button"
+                    className="wa-item-options-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveItemMenuKey((prev) => prev === item.key ? null : item.key);
+                    }}
+                  >
+                    ▾
+                  </button>
+                  {activeItemMenuKey === item.key && renderItemOptionsMenu(item)}
                 </div>
               </button>
             ))}
