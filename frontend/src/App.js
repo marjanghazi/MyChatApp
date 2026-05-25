@@ -30,7 +30,7 @@ import {
 } from "./services/userService";
 import { uploadMedia } from "./services/mediaService";
 import { showToast } from "./services/alertService";
-import { fetchChannels, fetchConversations, fetchGroups, fetchUsers, markDelivered } from "./services/threadService";
+import { fetchChannels, fetchConversations, fetchGroups, fetchUsers, hydrateConversationPreviews, markDelivered } from "./services/threadService";
 import "./App.css";
 import PublicHomePage from "./pages/PublicHomePage";
 import AuthPage       from "./pages/AuthPage";
@@ -223,7 +223,12 @@ function App() {
       inFlight = true;
       try {
         const { conversations: next } = await fetchConversations(uid);
-        if (active) setConversations(next || {});
+        if (active) {
+          const base = next || {};
+          setConversations(base);
+          const hydrated = await hydrateConversationPreviews(base, uid);
+          if (active) setConversations(hydrated);
+        }
       } catch {
         if (active) setConversations({});
       } finally { inFlight = false; }
