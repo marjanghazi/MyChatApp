@@ -94,6 +94,7 @@ const ChatWindow = ({
   const callDurationIntervalRef   = useRef(null);
   const stopCallMediaRef          = useRef(null);
   const setCallStateRef           = useRef(null);
+  const shouldStickToBottomRef    = useRef(true);
 
   // FIX #1 — ICE candidate buffer. Candidates arriving before setRemoteDescription
   // is called are buffered here and flushed once the remote desc is applied.
@@ -164,10 +165,24 @@ const ChatWindow = ({
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteCallStream || null;
   }, [remoteCallStream]);
 
+  const handleMessageScroll = () => {
+    const scroller = messagesEndRef.current?.parentElement;
+    if (!scroller) return;
+    const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+    shouldStickToBottomRef.current = distanceFromBottom < 140;
+  };
+
   // ── Scroll to bottom ──────────────────────────────────────────────────────
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (shouldStickToBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
+
+  useEffect(() => {
+    shouldStickToBottomRef.current = true;
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+  }, [activeThreadType, selectedConversationId, selectedGroup?.id, selectedChannel?.id]);
 
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1110,8 +1125,8 @@ const ChatWindow = ({
         localVideoRef={localVideoRef}
       />
 
-      <ChatMessages
-        visibleMessages={visibleMessages}
+        <ChatMessages
+          visibleMessages={visibleMessages}
         authUser={authUser}
         selectedUser={selectedUser}
         activeThreadType={activeThreadType}
@@ -1131,11 +1146,12 @@ const ChatWindow = ({
         deleteForMe={deleteForMe}
         toggleMessageFlag={toggleMessageFlag}
         contacts={contacts}
-        forwardMessage={forwardMessage}
-        messagesEndRef={messagesEndRef}
-        setMessageInput={setMessageInput}
-        setEditingMessageId={setEditingMessageId}
-      />
+          forwardMessage={forwardMessage}
+          messagesEndRef={messagesEndRef}
+          onMessageScroll={handleMessageScroll}
+          setMessageInput={setMessageInput}
+          setEditingMessageId={setEditingMessageId}
+        />
 
 
 
