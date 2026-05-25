@@ -134,3 +134,25 @@ curl -X POST http://127.0.0.1:4000/api/keys/devices/register   -H 'Content-Type:
 # fetch key bundle
 curl http://127.0.0.1:4000/api/keys/bundle/u1/devA
 ```
+
+
+## 13) One-time prekeys (forward secrecy bootstrap)
+
+Upload one-time prekeys:
+
+```bash
+curl -X POST http://127.0.0.1:4000/api/keys/prekeys/upload   -H 'Content-Type: application/json'   -d '{
+    "userId":"u2",
+    "deviceId":"devB",
+    "prekeys":[
+      {"prekeyId":"pk-1","publicKeyB64":"..."},
+      {"prekeyId":"pk-2","publicKeyB64":"..."}
+    ]
+  }'
+```
+
+Consume one-time prekey during session init:
+
+```bash
+curl -X POST http://127.0.0.1:4000/api/keys/prekeys/consume   -H 'Content-Type: application/json'   -d '{"userId":"u2","deviceId":"devB"}'
+```

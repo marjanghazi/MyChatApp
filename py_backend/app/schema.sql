@@ -97,3 +97,15 @@ CREATE TABLE IF NOT EXISTS user_devices (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+
+CREATE TABLE IF NOT EXISTS one_time_prekeys (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  prekey_id TEXT NOT NULL,
+  prekey_public_key_b64 TEXT NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(device_id, prekey_id)
+);
