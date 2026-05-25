@@ -26,14 +26,15 @@ def register_device(body: dict):
     identity_pub = body.get('identityPublicKeyB64')
     signed_prekey_pub = body.get('signedPrekeyPublicKeyB64')
     signed_prekey_sig = body.get('signedPrekeySignatureB64')
+    identity_sign_pub = body.get('identitySignPublicKeyB64')
 
     must(identity_pub, 'identityPublicKeyB64')
     must(signed_prekey_pub, 'signedPrekeyPublicKeyB64')
     must(signed_prekey_sig, 'signedPrekeySignatureB64')
 
     q(
-        'INSERT INTO user_devices(device_id,user_id,kex_algorithm,identity_public_key_b64,signed_prekey_public_key_b64,signed_prekey_signature_b64) VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT(device_id) DO UPDATE SET kex_algorithm=EXCLUDED.kex_algorithm, identity_public_key_b64=EXCLUDED.identity_public_key_b64, signed_prekey_public_key_b64=EXCLUDED.signed_prekey_public_key_b64, signed_prekey_signature_b64=EXCLUDED.signed_prekey_signature_b64, updated_at=now()',
-        (device_id, user_id, svc.kex_algorithm, identity_pub, signed_prekey_pub, signed_prekey_sig),
+        'INSERT INTO user_devices(device_id,user_id,kex_algorithm,identity_public_key_b64,signed_prekey_public_key_b64,signed_prekey_signature_b64,identity_sign_public_key_b64) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(device_id) DO UPDATE SET kex_algorithm=EXCLUDED.kex_algorithm, identity_public_key_b64=EXCLUDED.identity_public_key_b64, signed_prekey_public_key_b64=EXCLUDED.signed_prekey_public_key_b64, signed_prekey_signature_b64=EXCLUDED.signed_prekey_signature_b64, identity_sign_public_key_b64=EXCLUDED.identity_sign_public_key_b64, updated_at=now()',
+        (device_id, user_id, svc.kex_algorithm, identity_pub, signed_prekey_pub, signed_prekey_sig, identity_sign_pub),
     )
     return {'ok': True, 'deviceId': device_id, 'kexAlgorithm': svc.kex_algorithm}
 
@@ -50,6 +51,7 @@ def key_bundle(user_id: str, device_id: str):
         'identity_public_key_b64': row['identity_public_key_b64'],
         'signed_prekey_public_key_b64': row['signed_prekey_public_key_b64'],
         'signed_prekey_signature_b64': row['signed_prekey_signature_b64'],
+        'identity_sign_public_key_b64': row.get('identity_sign_public_key_b64'),
     }
 
 

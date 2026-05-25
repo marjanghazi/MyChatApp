@@ -44,6 +44,35 @@ function getSkippedKey(threadId, userId, peerUserId, counter) {
   return localStorage.getItem(skippedSlot(threadId, userId, peerUserId, counter));
 }
 
+
+
+async function ensureSigningIdentity(userId) {
+  const pubSlot = slot(`sign_pub_${userId}`);
+  const privSlot = slot(`sign_priv_${userId}`);
+  if (localStorage.getItem(pubSlot) && localStorage.getItem(privSlot)) {
+    return { pub: localStorage.getItem(pubSlot), priv: localStorage.getItem(privSlot) };
+  }
+  const kp = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+  const pub = new Uint8Array(await crypto.subtle.exportKey('raw', kp.publicKey));
+  const priv = new Uint8Array(await crypto.subtle.exportKey('pkcs8', kp.privateKey));
+  localStorage.setItem(pubSlot, b64.encode(pub));
+  localStorage.setItem(privSlot, b64.encode(priv));
+  return { pub: b64.encode(pub), priv: b64.encode(priv) };
+}
+
+async function signBytesEd25519(userId, msgBytes) {
+  const raw = localStorage.getItem(slot(`sign_priv_${userId}`));
+  if (!raw) throw new Error('Missing signing private key');
+  const key = await crypto.subtle.importKey('pkcs8', b64.decode(raw), { name: 'Ed25519' }, false, ['sign']);
+  const sig = await crypto.subtle.sign({ name: 'Ed25519' }, key, msgBytes);
+  return b64.encode(sig);
+}
+
+async function verifyBytesEd25519(pubB64, msgBytes, sigB64) {
+  const key = await crypto.subtle.importKey('raw', b64.decode(pubB64), { name: 'Ed25519' }, false, ['verify']);
+  return crypto.subtle.verify({ name: 'Ed25519' }, key, b64.decode(sigB64), msgBytes);
+}
+
 export async function ensureDeviceIdentity(userId) {
   const pubSlot = slot(`device_pub_${userId}`);
   const privSlot = slot(`device_priv_${userId}`);
@@ -70,10 +99,11 @@ export async function registerDeviceBundle(apiRequest, userId) {
   const ensured = await ensureDeviceIdentity(userId);
   const identityPublicKeyB64 = localStorage.getItem(slot(`device_pub_${userId}`));
   const signedPrekeyPublicKeyB64 = identityPublicKeyB64;
-  const signedPrekeySignatureB64 = b64.encode(crypto.getRandomValues(new Uint8Array(64)));
+  const signing = await ensureSigningIdentity(userId);
+  const signedPrekeySignatureB64 = await signBytesEd25519(userId, b64.decode(signedPrekeyPublicKeyB64));
   await apiRequest('/api/keys/devices/register', {
     method: 'POST',
-    body: JSON.stringify({ userId, deviceId: ensured.deviceId, identityPublicKeyB64, signedPrekeyPublicKeyB64, signedPrekeySignatureB64 }),
+    body: JSON.stringify({ userId, deviceId: ensured.deviceId, identityPublicKeyB64, signedPrekeyPublicKeyB64, signedPrekeySignatureB64, identitySignPublicKeyB64: signing.pub }),
   });
   return ensured.deviceId;
 }
@@ -83,6 +113,10 @@ async function resolvePeerBundle(apiRequest, recipientUid) {
   try {
     const bundle = await apiRequest(`/api/keys/bundle/${encodeURIComponent(recipientUid)}/${encodeURIComponent(forcedDev)}`);
     localStorage.setItem(slot(`peer_dev_${recipientUid}`), bundle.device_id || forcedDev);
+    if (bundle.identity_sign_public_key_b64 && bundle.signed_prekey_signature_b64 && bundle.signed_prekey_public_key_b64) {
+      const ok = await verifyBytesEd25519(bundle.identity_sign_public_key_b64, b64.decode(bundle.signed_prekey_public_key_b64), bundle.signed_prekey_signature_b64);
+      if (!ok) throw new Error('Signed prekey verification failed');
+    }
     if (bundle.identity_public_key_b64) localStorage.setItem(slot(`peer_pub_${recipientUid}`), bundle.identity_public_key_b64);
     return bundle;
   } catch {

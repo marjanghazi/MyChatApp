@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS user_devices (
   identity_public_key_b64 TEXT NOT NULL,
   signed_prekey_public_key_b64 TEXT NOT NULL,
   signed_prekey_signature_b64 TEXT NOT NULL,
+  identity_sign_public_key_b64 TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
