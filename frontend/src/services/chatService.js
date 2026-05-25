@@ -1,15 +1,14 @@
 import { apiRequest } from "./apiClient";
-import { encryptMessageEnvelope, tryDecryptEnvelope } from "./e2eeService";
+import { encryptMessageEnvelope, tryDecryptEnvelopeWithParticipants } from "./e2eeService";
 
 export const sendChatMessage = async (body) => {
   const payload = body?.payload || {};
   const hasEnvelope = payload.ciphertext_b64 && payload.nonce_b64 && payload.aad_b64;
   if (!hasEnvelope && typeof payload.text === 'string') {
-    const envelope = await encryptMessageEnvelope({
+    const envelope = await encryptMessageEnvelope(apiRequest, {
       threadId: body.threadId,
-      senderDeviceId: body.actorUid,
-      recipientDeviceId: body.targetUid || 'group',
-      sessionId: `${body.threadId}:${body.actorUid}:${body.targetUid || 'group'}`,
+      senderUid: body.actorUid,
+      recipientUid: body.targetUid || body.actorUid,
       plaintext: payload.text,
     });
     body = { ...body, payload: envelope };
@@ -47,7 +46,7 @@ export const toggleChatMessageFlag = (body) =>
 export const fetchThreadMessages = async (threadType, threadId, uid) => {
   const out = await apiRequest(`/api/chat/messages?threadType=${encodeURIComponent(threadType)}&threadId=${encodeURIComponent(threadId)}&uid=${encodeURIComponent(uid || '')}`);
   const next = await Promise.all((out.messages || []).map(async (m) => {
-    const text = await tryDecryptEnvelope(threadId, m);
+    const text = await tryDecryptEnvelopeWithParticipants(apiRequest, threadId, m, uid, m.senderId || m.sender_id);
     return text ? { ...m, text } : m;
   }));
   return { ...out, messages: next };

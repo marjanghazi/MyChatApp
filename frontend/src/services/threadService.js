@@ -1,5 +1,5 @@
 import { apiRequest } from "./apiClient";
-import { tryDecryptEnvelope } from "./e2eeService";
+import { tryDecryptEnvelopeWithParticipants } from "./e2eeService";
 
 export const fetchUsers = async (excludeUid) =>
   apiRequest(`/api/thread/users?excludeUid=${encodeURIComponent(excludeUid)}`);
@@ -27,7 +27,7 @@ export const hydrateConversationPreviews = async (conversations, uid) => {
       const msgs = out.messages || [];
       const last = msgs.length ? msgs[msgs.length - 1] : null;
       if (!last) return [conversationId, conv];
-      const text = await tryDecryptEnvelope(conversationId, last);
+      const text = await tryDecryptEnvelopeWithParticipants(apiRequest, conversationId, last, uid, last.senderId || last.sender_id);
       if (!text) return [conversationId, conv];
       return [conversationId, { ...conv, lastMessage: text }];
     } catch {

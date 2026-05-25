@@ -1,4 +1,5 @@
 import { apiRequest } from "./apiClient";
+import { registerDeviceBundle } from "./e2eeService";
 
 const STORAGE_KEY = "pqc_auth_user";
 const listeners = new Set();
@@ -33,8 +34,10 @@ export const createUserWithEmailAndPassword = async (email, password, displayNam
     method: "POST",
     body: JSON.stringify({ email, password, displayName }),
   });
-  setUser(user);
-  return { user };
+  const deviceId = await registerDeviceBundle(apiRequest, user.uid);
+  const withDev = { ...user, deviceId };
+  setUser(withDev);
+  return { user: withDev };
 };
 
 export const signInWithEmailAndPassword = async (email, password) => {
@@ -42,8 +45,10 @@ export const signInWithEmailAndPassword = async (email, password) => {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
-  setUser(user);
-  return { user };
+  const deviceId = await registerDeviceBundle(apiRequest, user.uid);
+  const withDev = { ...user, deviceId };
+  setUser(withDev);
+  return { user: withDev };
 };
 
 export const updateProfile = async (user, patch) => {
