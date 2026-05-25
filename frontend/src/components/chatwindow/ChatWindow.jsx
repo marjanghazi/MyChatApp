@@ -90,6 +90,9 @@ const ChatWindow = ({
   const localVideoRef             = useRef(null);
   const remoteVideoRef            = useRef(null);
   const messagesEndRef            = useRef(null);
+  const messageAreaRef            = useRef(null);
+  const shouldAutoScrollRef       = useRef(true);
+  const activeThreadKeyRef        = useRef("");
   const composerRef               = useRef(null);
   const callDurationIntervalRef   = useRef(null);
   const stopCallMediaRef          = useRef(null);
@@ -164,10 +167,27 @@ const ChatWindow = ({
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteCallStream || null;
   }, [remoteCallStream]);
 
-  // ── Scroll to bottom ──────────────────────────────────────────────────────
+  // ── Scroll behavior ───────────────────────────────────────────────────────
+  const handleMessagesScroll = () => {
+    const area = messageAreaRef.current;
+    if (!area) return;
+    const distanceFromBottom = area.scrollHeight - (area.scrollTop + area.clientHeight);
+    shouldAutoScrollRef.current = distanceFromBottom <= 80;
+  };
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const threadKey = `${activeThreadType}:${selectedConversationId || selectedGroup?.id || selectedChannel?.id || ""}`;
+    if (activeThreadKeyRef.current !== threadKey) {
+      activeThreadKeyRef.current = threadKey;
+      shouldAutoScrollRef.current = true;
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+      return;
+    }
+
+    if (shouldAutoScrollRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, activeThreadType, selectedConversationId, selectedGroup?.id, selectedChannel?.id]);
 
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1133,6 +1153,8 @@ const ChatWindow = ({
         contacts={contacts}
         forwardMessage={forwardMessage}
         messagesEndRef={messagesEndRef}
+        messageAreaRef={messageAreaRef}
+        onMessagesScroll={handleMessagesScroll}
         setMessageInput={setMessageInput}
         setEditingMessageId={setEditingMessageId}
       />

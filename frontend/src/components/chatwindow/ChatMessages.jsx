@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import "./ChatMessages.styles.css";
 
 const ChatMessages = ({
@@ -25,11 +25,12 @@ const ChatMessages = ({
   contacts,
   forwardMessage,
   messagesEndRef,
+  messageAreaRef,
+  onMessagesScroll,
   setMessageInput,
   setEditingMessageId,
 }) => {
   const [actionMenuFor, setActionMenuFor] = useState(null);
-  const messageAreaRef = useRef(null);
 
   useEffect(() => {
     const closeOnOutsideClick = (event) => {
@@ -37,10 +38,10 @@ const ChatMessages = ({
     };
     document.addEventListener("click", closeOnOutsideClick);
     return () => document.removeEventListener("click", closeOnOutsideClick);
-  }, []);
+  }, [messageAreaRef]);
 
   return (
-  <section className="qx-messages" ref={messageAreaRef}>
+  <section className="qx-messages" ref={messageAreaRef} onScroll={onMessagesScroll}>
     {visibleMessages.length === 0 && (
       <div className="qx-messages-empty">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="40" height="40"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
