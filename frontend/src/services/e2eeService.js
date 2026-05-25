@@ -10,6 +10,7 @@ const b64 = {
 const slot = (k) => `${KEY_NS}:${k}`;
 const SKIPPED_NS = `${KEY_NS}:skipped`;
 const ordered = (a, b) => [String(a || ''), String(b || '')].sort();
+const PROTOCOL_VERSION = '1.0';
 
 
 async function importX25519Public(rawBytes) {
@@ -183,12 +184,12 @@ export async function encryptMessageEnvelope(apiRequest, { threadId, senderUid, 
   const [u1, u2] = ordered(senderUid, recipientUid);
   const sessionId = `${threadId}:${u1}:${u2}`;
   const nonce = crypto.getRandomValues(new Uint8Array(12));
-  const aad = te.encode(JSON.stringify({ threadId, senderDeviceId, recipientDeviceId, sessionId, protocol_version: '1.0' }));
+  const aad = te.encode(JSON.stringify({ threadId, senderDeviceId, recipientDeviceId, sessionId, protocol_version: PROTOCOL_VERSION, msg_counter: state.sendCounter }));
   const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce, additionalData: aad }, key, te.encode(plaintext)));
   const keyConfirmB64 = b64.encode(await hmacSha256(step.msgKeyBytes, concatBytes(aad, ciphertext)));
   return {
     ciphertext_b64: b64.encode(ciphertext), nonce_b64: b64.encode(nonce), aad_b64: b64.encode(aad),
-    protocol_version: '1.0', kex_algorithm: 'x25519', kdf_algorithm: 'hkdf-sha256', cipher: 'aes-256-gcm',
+    protocol_version: PROTOCOL_VERSION, kex_algorithm: 'x25519', kdf_algorithm: 'hkdf-sha256', cipher: 'aes-256-gcm',
     sender_device_id: senderDeviceId, recipient_device_id: recipientDeviceId, session_id: sessionId, msg_counter: state.sendCounter, key_confirm_b64: keyConfirmB64, type: 'e2ee',
   };
 }
@@ -198,6 +199,8 @@ export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, p
   try {
     const state = await loadOrCreateRatchetState(apiRequest, threadId, recipientUid, senderUid);
     const targetCounter = Number(payload.msg_counter || 0);
+    if (payload.protocol_version !== PROTOCOL_VERSION) throw new Error('Unsupported protocol version');
+    if (!Number.isInteger(targetCounter) || targetCounter <= 0) throw new Error('Invalid msg_counter');
 
     if (targetCounter > 0) {
       const replay = await apiRequest('/api/keys/replay/check', { method: 'POST', body: JSON.stringify({ threadId, recipientUserId: recipientUid, senderUserId: senderUid, msgCounter: targetCounter }) });
@@ -230,6 +233,9 @@ export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, p
     }
 
     const aad = b64.decode(payload.aad_b64);
+    const aadObj = JSON.parse(td.decode(aad));
+    if (Number(aadObj.msg_counter || 0) !== targetCounter) throw new Error('AAD counter mismatch');
+    if (aadObj.protocol_version !== PROTOCOL_VERSION) throw new Error('AAD protocol mismatch');
     const cipherBytes = b64.decode(payload.ciphertext_b64);
     if (payload.key_confirm_b64) {
       const expected = b64.encode(await hmacSha256(keyBytes, concatBytes(aad, cipherBytes)));
