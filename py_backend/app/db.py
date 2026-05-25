@@ -52,11 +52,23 @@ def get_conn():
             pool.putconn(conn)
 
 
+
+
+def _run_compat_migrations(conn) -> None:
+    migration_sql = [
+        "ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS identity_sign_public_key_b64 TEXT",
+        "CREATE TABLE IF NOT EXISTS e2ee_replay_index (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), thread_id TEXT NOT NULL, recipient_user_id TEXT NOT NULL, sender_user_id TEXT NOT NULL, msg_counter BIGINT NOT NULL, consumed_at TIMESTAMPTZ DEFAULT now(), UNIQUE(thread_id, recipient_user_id, sender_user_id, msg_counter))",
+    ]
+    with conn.cursor() as cur:
+        for stmt in migration_sql:
+            cur.execute(stmt)
+
 def init_db() -> None:
     schema = open(os.path.join(os.path.dirname(__file__), 'schema.sql'), 'r', encoding='utf-8').read()
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(schema)
+        _run_compat_migrations(conn)
         conn.commit()
 
 

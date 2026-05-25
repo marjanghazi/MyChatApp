@@ -69,6 +69,9 @@ export const fetchThreadMessages = async (threadType, threadId, uid) => {
         }
       }
     }
+    if (m?.ciphertext_b64) {
+      return { ...m, text: m.text || '[Unable to decrypt message]' };
+    }
     return m;
   }));
   return { ...out, messages: next };
