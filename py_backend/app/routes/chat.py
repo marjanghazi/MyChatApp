@@ -9,6 +9,13 @@ ALLOWED_SIGNAL_TYPES={'offer','answer','candidate','ice','hangup'}
 E2EE_REQUIRED = os.getenv('E2EE_REQUIRED', 'false').lower() == 'true'
 
 
+def _assert_e2ee_payload(payload: dict) -> None:
+    required = ['ciphertext_b64', 'nonce_b64', 'aad_b64', 'sender_device_id', 'recipient_device_id', 'session_id']
+    missing = [k for k in required if not payload.get(k)]
+    if missing:
+        raise HTTPException(status_code=400, detail=f'Missing encrypted envelope fields: {", ".join(missing)}')
+
+
 def _normalize_signal_row(row: dict) -> dict:
     signal = dict(row or {})
     data = signal.pop('data', None)
@@ -53,6 +60,7 @@ def send(body: dict):
         raise HTTPException(status_code=400, detail='E2EE_REQUIRED is enabled. Send encrypted envelope payload only.')
 
     if has_envelope:
+        _assert_e2ee_payload(payload)
         payload['e2ee'] = {
             'protocol_version': payload.get('protocol_version', '1.0'),
             'kex_algorithm': payload.get('kex_algorithm', 'x25519'),
@@ -77,6 +85,8 @@ def send(body: dict):
 
 @router.patch('/messages/edit')
 def edit(body: dict):
+    if E2EE_REQUIRED:
+        raise HTTPException(status_code=400, detail='Edit plaintext endpoint disabled in E2EE_REQUIRED mode.')
     must(body.get('messageId'),'messageId'); must(body.get('text'),'text'); q("UPDATE messages SET body = jsonb_set(body,'{text}',to_jsonb(%s::text)), edited_at=now() WHERE id=%s", (body['text'], body['messageId'])); return {'ok':True}
 @router.patch('/messages/delete-for-me')
 def delme(body: dict):
@@ -137,7 +147,16 @@ def meta(body: dict): must(body.get('conversationId'),'conversationId'); patch=b
 @router.post('/conversations/call-logs')
 def addlog(body: dict): must(body.get('conversationId'),'conversationId'); q('INSERT INTO call_logs(conversation_id,data) VALUES (%s,%s)', (body['conversationId'], body.get('callData') or {})); return {'ok':True}
 @router.post('/conversations/messages')
-def addmsg(body: dict): must(body.get('conversationId'),'conversationId'); q('INSERT INTO messages(thread_type,thread_id,body) VALUES (%s,%s,%s)', ('direct',body['conversationId'], body.get('message') or {})); return {'ok':True}
+def addmsg(body: dict):
+    must(body.get('conversationId'),'conversationId')
+    payload = body.get('message') or {}
+    has_envelope = all(payload.get(k) for k in ['ciphertext_b64', 'nonce_b64', 'aad_b64'])
+    if E2EE_REQUIRED and not has_envelope:
+        raise HTTPException(status_code=400, detail='E2EE_REQUIRED is enabled. Send encrypted envelope payload only.')
+    if has_envelope:
+        _assert_e2ee_payload(payload)
+    q('INSERT INTO messages(thread_type,thread_id,body) VALUES (%s,%s,%s)', ('direct',body['conversationId'], payload))
+    return {'ok':True}
 @router.post('/conversations/signals')
 def addsig(body: dict):
     must(body.get('conversationId'),'conversationId')
