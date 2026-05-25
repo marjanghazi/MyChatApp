@@ -21,13 +21,20 @@ export const fetchChannels = async () => apiRequest("/api/thread/channels");
 export const hydrateConversationPreviews = async (conversations, uid) => {
   const entries = Object.entries(conversations || {});
   const updates = await Promise.all(entries.map(async ([conversationId, conv]) => {
-    if (!conversationId || conv?.lastMessage !== '[E2EE message]') return [conversationId, conv];
+    if (!conversationId) return [conversationId, conv];
+    const lastMessage = String(conv?.lastMessage || '');
+    const needsHydration = ['[E2EE message]', '[Unable to decrypt message]'].includes(lastMessage) || !lastMessage.trim();
+    if (!needsHydration) return [conversationId, conv];
     try {
       const out = await apiRequest(`/api/chat/messages?threadType=direct&threadId=${encodeURIComponent(conversationId)}&uid=${encodeURIComponent(uid || '')}`);
       const msgs = out.messages || [];
       const last = msgs.length ? msgs[msgs.length - 1] : null;
       if (!last) return [conversationId, conv];
-      const text = await tryDecryptEnvelopeWithParticipants(apiRequest, conversationId, last, uid, last.senderId || last.sender_id);
+      const sender = last.senderId || last.sender_id;
+      const receiver = last.receiverId || last.receiver_id;
+      const effectiveRecipient = sender === uid ? receiver : uid;
+      const effectiveSender = sender === uid ? uid : sender;
+      const text = await tryDecryptEnvelopeWithParticipants(apiRequest, conversationId, last, effectiveRecipient, effectiveSender);
       if (!text) return [conversationId, conv];
       return [conversationId, { ...conv, lastMessage: text }];
     } catch {
