@@ -1,8 +1,10 @@
 // Sidebar.jsx — QuantX · QUANTX-style Sidebar
 import { useMemo, useState } from "react";
 import "./Sidebar.css";
+import { showToast } from "../services/alertService";
+import { sidebarContactOptionsHandlers } from "./sidebar-contact-options";
 
-const FILTERS = ["All", "Unread", "Groups", "Channels"];
+const FILTERS = ["All", "Unread", "Groups", "Channels", "Archived"];
 
 const toDate = (value) => {
   if (!value) return null;
@@ -93,6 +95,8 @@ const Sidebar = ({
   const [showAddContact, setShowAddContact] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [activeItemMenuKey, setActiveItemMenuKey] = useState(null);
+  const [runningOptionKey, setRunningOptionKey] = useState("");
+  const [localMetaByConversation, setLocalMetaByConversation] = useState({});
 
   // Build unified list items based on active filter AND search
   const listItems = useMemo(() => {
@@ -106,18 +110,24 @@ const Sidebar = ({
              preview.toLowerCase().includes(searchLower);
     };
 
-    // Direct messages - show in All and Unread filters
-    if (filter === "All" || filter === "Unread") {
+    // Direct messages - show in All, Unread and Archived filters
+    if (filter === "All" || filter === "Unread" || filter === "Archived") {
       contacts.forEach((user) => {
         const convId = conversationIdFor(authUser.uid, user.uid);
-        const conv = conversations[convId];
+        const conv = {
+          ...(conversations[convId] || {}),
+          ...(localMetaByConversation[convId] || {}),
+        };
         const unread = conv?.unreadBy?.[authUser.uid] || 0;
+        const isArchived = !!conv?.archivedBy?.[authUser.uid];
         const preview = conv?.lastMessage || user.phoneNumber || user.email || "No messages yet";
         const name = user.displayName || "Unknown";
         const isTyping = !!conv?.typing?.[user.uid];
         
         // Filter by unread
         if (filter === "Unread" && unread === 0) return;
+        // Filter by archived tab
+        if (filter === "Archived" && !isArchived) return;
         // Filter by search
         if (!matchesSearch(name, preview)) return;
         
@@ -136,6 +146,7 @@ const Sidebar = ({
           photoURL: user.photoURL,
           isMuted: conv?.mutedBy?.[authUser.uid] || false,
           isPinned: conv?.pinnedBy?.[authUser.uid] || false,
+          isArchived,
         });
       });
     }
@@ -194,11 +205,13 @@ const Sidebar = ({
     });
 
     return items;
-  }, [filter, search, contacts, groups, followedChannels, conversations, authUser.uid, activeThreadType, selectedUser, selectedGroup, selectedChannel]);
+  }, [filter, search, contacts, groups, followedChannels, conversations, localMetaByConversation, authUser.uid, activeThreadType, selectedUser, selectedGroup, selectedChannel]);
 
   // Pinned items (only for direct messages)
-  const pinnedItems = listItems.filter(item => item.type === "direct" && item.isPinned);
-  const regularItems = listItems.filter(item => !(item.type === "direct" && item.isPinned));
+  const archivedItems = listItems.filter((item) => item.type === "direct" && item.isArchived);
+  const visibleItems = filter === "All" ? listItems.filter((item) => !(item.type === "direct" && item.isArchived)) : listItems;
+  const pinnedItems = visibleItems.filter(item => item.type === "direct" && item.isPinned);
+  const regularItems = visibleItems.filter(item => !(item.type === "direct" && item.isPinned));
 
   const totalUnread = useMemo(() =>
     Object.values(conversations).reduce((acc, conv) => acc + (conv.unreadBy?.[authUser?.uid] || 0), 0),
@@ -212,23 +225,83 @@ const Sidebar = ({
   };
 
   const markAllAsRead = () => {
-    // TODO: Implement mark all as read functionality
+    const directItems = listItems.filter((item) => item.type === "direct" && item.unread > 0);
+    directItems.forEach((item) => {
+      const convId = conversationIdFor(authUser.uid, item.user.uid);
+      setLocalMetaByConversation((prev) => ({
+        ...prev,
+        [convId]: {
+          ...(prev[convId] || {}),
+          unreadBy: {
+            ...((conversations[convId]?.unreadBy) || {}),
+            [authUser.uid]: 0,
+          },
+        },
+      }));
+      sidebarContactOptionsHandlers.markAsRead({
+        conversationId: convId,
+        conversation: item.conv,
+        authUser,
+      }).catch(() => {});
+    });
+    showToast("All chats marked as read.");
     setShowMenu(false);
   };
 
+  const runContactOption = async (item, optionKey) => {
+    if (item.type !== "direct") {
+      showToast("This option is currently available for direct chats.");
+      return;
+    }
+    const conversationId = conversationIdFor(authUser.uid, item.user.uid);
+    const handler = sidebarContactOptionsHandlers[optionKey];
+    if (!handler) return;
+    setRunningOptionKey(`${item.key}:${optionKey}`);
+    try {
+      await handler({
+        conversationId,
+        conversation: item.conv,
+        authUser,
+        item,
+      });
+      const convPatch = {};
+      if (optionKey === "archiveChat") convPatch.archivedBy = { ...(item.conv?.archivedBy || {}), [authUser.uid]: !item.isArchived };
+      if (optionKey === "toggleMuteNotifications") convPatch.mutedBy = { ...(item.conv?.mutedBy || {}), [authUser.uid]: !item.isMuted };
+      if (optionKey === "togglePinChat") convPatch.pinnedBy = { ...(item.conv?.pinnedBy || {}), [authUser.uid]: !item.isPinned };
+      if (optionKey === "markAsUnread") convPatch.unreadBy = { ...(item.conv?.unreadBy || {}), [authUser.uid]: Math.max(item.unread || 0, 1) };
+      if (optionKey === "markAsRead") convPatch.unreadBy = { ...(item.conv?.unreadBy || {}), [authUser.uid]: 0 };
+      setLocalMetaByConversation((prev) => ({
+        ...prev,
+        [conversationId]: { ...(prev[conversationId] || {}), ...convPatch },
+      }));
+      showToast("Updated successfully.");
+      setActiveItemMenuKey(null);
+    } catch {
+      showToast("Unable to update this option right now.");
+    } finally {
+      setRunningOptionKey("");
+    }
+  };
+
   const renderItemOptionsMenu = (item) => {
-    const isGroup = item.type === "group";
+    const isDirect = item.type === "direct";
     return (
       <div className="wa-item-options-menu" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="wa-item-options-menu-item">Archive chat</button>
-        <button type="button" className="wa-item-options-menu-item">Mute notifications</button>
-        <button type="button" className="wa-item-options-menu-item">{item.isPinned ? "Unpin chat" : "Pin chat"}</button>
-        <button type="button" className="wa-item-options-menu-item">Mark as unread</button>
-        <button type="button" className="wa-item-options-menu-item">Add to favorites</button>
-        <button type="button" className="wa-item-options-menu-item">Add to list</button>
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:archiveChat`} onClick={() => runContactOption(item, "archiveChat")}>{item.isArchived ? "Unarchive chat" : "Archive chat"}</button>
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:toggleMuteNotifications`} onClick={() => runContactOption(item, "toggleMuteNotifications")}>{item.isMuted ? "Unmute notifications" : "Mute notifications"}</button>
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:togglePinChat`} onClick={() => runContactOption(item, "togglePinChat")}>{item.isPinned ? "Unpin chat" : "Pin chat"}</button>
+        <button
+          type="button"
+          className="wa-item-options-menu-item"
+          disabled={!isDirect || runningOptionKey === `${item.key}:${item.unread > 0 ? "markAsRead" : "markAsUnread"}`}
+          onClick={() => runContactOption(item, item.unread > 0 ? "markAsRead" : "markAsUnread")}
+        >
+          {item.unread > 0 ? "Mark as read" : "Mark as unread"}
+        </button>
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:toggleFavorite`} onClick={() => runContactOption(item, "toggleFavorite")}>Add to favorites</button>
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:toggleListTag`} onClick={() => runContactOption(item, "toggleListTag")}>Add to list</button>
         <div className="wa-item-options-menu-divider" />
-        <button type="button" className="wa-item-options-menu-item">Clear chat</button>
-        {isGroup && <button type="button" className="wa-item-options-menu-item wa-item-options-menu-item-danger">Exit group</button>}
+        <button type="button" className="wa-item-options-menu-item" disabled={!isDirect || runningOptionKey === `${item.key}:clearChat`} onClick={() => runContactOption(item, "clearChat")}>Clear chat</button>
       </div>
     );
   };
@@ -404,7 +477,7 @@ const Sidebar = ({
 
       {/* Chat List */}
       <div className="wa-chat-list">
-        {listItems.length === 0 && (
+        {visibleItems.length === 0 && archivedItems.length === 0 && (
           <div className="wa-empty-state">
             <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
@@ -412,6 +485,7 @@ const Sidebar = ({
             <p>
               {search ? "No results found" :
                filter === "Unread" ? "No unread messages" :
+               filter === "Archived" ? "No archived chats" :
                filter === "Groups" ? "No groups yet" :
                filter === "Channels" ? "No channels followed yet" :
                "No conversations yet"}
@@ -422,6 +496,15 @@ const Sidebar = ({
             {!search && filter === "Channels" && (
               <button type="button" className="wa-empty-btn" onClick={onCreateChannel}>Create a channel</button>
             )}
+          </div>
+        )}
+
+        {filter === "All" && archivedItems.length > 0 && (
+          <div className="wa-archived-section">
+            <button type="button" className="wa-archived-toggle" onClick={() => setFilter("Archived")}>
+              <span>Archived</span>
+              <span className="wa-archived-count">{archivedItems.length}</span>
+            </button>
           </div>
         )}
 
