@@ -10,6 +10,7 @@ from app.config import cors_origins, load_env
 from app.db import db_healthcheck, init_db
 from app.routes.auth import router as auth_router
 from app.routes.chat import router as chat_router
+from app.routes.keys import router as keys_router
 from app.routes.community import router as community_router
 from app.routes.media import router as media_router
 from app.routes.thread import router as thread_router
@@ -51,6 +52,7 @@ app.include_router(users_router)
 app.include_router(thread_router)
 app.include_router(media_router)
 app.include_router(chat_router)
+app.include_router(keys_router)
 
 
 @app.exception_handler(StarletteHTTPException)

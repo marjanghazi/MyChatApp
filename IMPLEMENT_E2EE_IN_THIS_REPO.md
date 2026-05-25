@@ -95,3 +95,42 @@ curl http://127.0.0.1:8000/api/health
 3. Enforce JWT on WebSocket.
 4. Deprecate plaintext message pathways.
 5. Add hybrid KEX adapter without touching message transport/service contracts.
+
+
+## 11) Mandatory encrypted send payload shape
+
+When `E2EE_REQUIRED=true`, client must send:
+
+```json
+{
+  "threadType":"direct",
+  "threadId":"u1_u2",
+  "actorUid":"u1",
+  "targetUid":"u2",
+  "payload":{
+    "ciphertext_b64":"...",
+    "nonce_b64":"...",
+    "aad_b64":"...",
+    "protocol_version":"1.0",
+    "kex_algorithm":"x25519",
+    "kdf_algorithm":"hkdf-sha256",
+    "cipher":"aes-256-gcm",
+    "sender_device_id":"devA",
+    "recipient_device_id":"devB",
+    "session_id":"sess-123"
+  }
+}
+```
+
+## 12) Key management commands
+
+```bash
+# generate demo x25519 keypair for testing
+curl -X POST http://127.0.0.1:4000/api/keys/demo/generate-x25519
+
+# register device key bundle
+curl -X POST http://127.0.0.1:4000/api/keys/devices/register   -H 'Content-Type: application/json'   -d '{"userId":"u1","deviceId":"devA","identityPublicKeyB64":"...","signedPrekeyPublicKeyB64":"...","signedPrekeySignatureB64":"..."}'
+
+# fetch key bundle
+curl http://127.0.0.1:4000/api/keys/bundle/u1/devA
+```

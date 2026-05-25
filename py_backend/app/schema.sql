@@ -86,3 +86,14 @@ CREATE TABLE IF NOT EXISTS signals (
   data JSONB NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS user_devices (
+  device_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  kex_algorithm TEXT NOT NULL DEFAULT 'x25519',
+  identity_public_key_b64 TEXT NOT NULL,
+  signed_prekey_public_key_b64 TEXT NOT NULL,
+  signed_prekey_signature_b64 TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
