@@ -8,6 +8,7 @@ const b64 = {
 };
 
 const slot = (k) => `${KEY_NS}:${k}`;
+const SKIPPED_NS = `${KEY_NS}:skipped`;
 const ordered = (a, b) => [String(a || ''), String(b || '')].sort();
 
 async function importX25519Public(rawBytes) {
@@ -27,6 +28,20 @@ async function hkdfKey(sharedSecret, saltBytes, infoBytes) {
 
 async function sha256Bytes(input) {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', input));
+}
+
+
+
+function skippedSlot(threadId, userId, peerUserId, counter) {
+  return `${SKIPPED_NS}:${threadId}:${userId}:${peerUserId}:${counter}`;
+}
+
+function setSkippedKey(threadId, userId, peerUserId, counter, keyB64) {
+  localStorage.setItem(skippedSlot(threadId, userId, peerUserId, counter), keyB64);
+}
+
+function getSkippedKey(threadId, userId, peerUserId, counter) {
+  return localStorage.getItem(skippedSlot(threadId, userId, peerUserId, counter));
 }
 
 export async function ensureDeviceIdentity(userId) {
@@ -116,7 +131,7 @@ export async function encryptMessageEnvelope(apiRequest, { threadId, senderUid, 
   return {
     ciphertext_b64: b64.encode(ciphertext), nonce_b64: b64.encode(nonce), aad_b64: b64.encode(aad),
     protocol_version: '1.0', kex_algorithm: 'x25519', kdf_algorithm: 'hkdf-sha256', cipher: 'aes-256-gcm',
-    sender_device_id: senderDeviceId, recipient_device_id: recipientDeviceId, session_id: sessionId, type: 'e2ee',
+    sender_device_id: senderDeviceId, recipient_device_id: recipientDeviceId, session_id: sessionId, msg_counter: state.sendCounter, type: 'e2ee',
   };
 }
 
@@ -124,12 +139,30 @@ export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, p
   if (!payload?.ciphertext_b64 || !payload?.nonce_b64 || !payload?.aad_b64) return null;
   try {
     const state = await loadOrCreateRatchetState(apiRequest, threadId, recipientUid, senderUid);
-    const step = await nextChain(state.recvChainKeyB64);
-    state.recvChainKeyB64 = step.nextChainKeyB64;
-    state.recvCounter = (state.recvCounter || 0) + 1;
-    localStorage.setItem(slot(`ratchet_${threadId}_${recipientUid}_${senderUid}`), JSON.stringify(state));
-    await apiRequest('/api/keys/sessions/upsert', { method: 'POST', body: JSON.stringify(state) });
-    const key = await crypto.subtle.importKey('raw', step.msgKeyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+    const targetCounter = Number(payload.msg_counter || 0);
+
+    const skipped = getSkippedKey(threadId, recipientUid, senderUid, targetCounter);
+    let keyBytes = null;
+    if (skipped) {
+      keyBytes = b64.decode(skipped);
+      localStorage.removeItem(skippedSlot(threadId, recipientUid, senderUid, targetCounter));
+    } else {
+      while ((state.recvCounter || 0) < targetCounter - 1) {
+        const inter = await nextChain(state.recvChainKeyB64);
+        const futureCounter = (state.recvCounter || 0) + 1;
+        setSkippedKey(threadId, recipientUid, senderUid, futureCounter, b64.encode(inter.msgKeyBytes));
+        state.recvChainKeyB64 = inter.nextChainKeyB64;
+        state.recvCounter = futureCounter;
+      }
+      const step = await nextChain(state.recvChainKeyB64);
+      keyBytes = step.msgKeyBytes;
+      state.recvChainKeyB64 = step.nextChainKeyB64;
+      state.recvCounter = (state.recvCounter || 0) + 1;
+      localStorage.setItem(slot(`ratchet_${threadId}_${recipientUid}_${senderUid}`), JSON.stringify(state));
+      await apiRequest('/api/keys/sessions/upsert', { method: 'POST', body: JSON.stringify(state) });
+    }
+
+    const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
     const plaintext = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: b64.decode(payload.nonce_b64), additionalData: b64.decode(payload.aad_b64) },
       key,
