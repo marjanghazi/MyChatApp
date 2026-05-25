@@ -49,6 +49,13 @@ function getSkippedKey(threadId, userId, peerUserId, counter) {
   return localStorage.getItem(skippedSlot(threadId, userId, peerUserId, counter));
 }
 
+function concatBytes(a, b) {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a, 0);
+  out.set(b, a.length);
+  return out;
+}
+
 
 
 async function ensureSigningIdentity(userId) {
@@ -175,11 +182,12 @@ export async function encryptMessageEnvelope(apiRequest, { threadId, senderUid, 
   const sessionId = `${threadId}:${u1}:${u2}`;
   const nonce = crypto.getRandomValues(new Uint8Array(12));
   const aad = te.encode(JSON.stringify({ threadId, senderDeviceId, recipientDeviceId, sessionId, protocol_version: '1.0' }));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce, additionalData: aad }, key, te.encode(plaintext));
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce, additionalData: aad }, key, te.encode(plaintext)));
+  const keyConfirmB64 = b64.encode(await hmacSha256(step.msgKeyBytes, concatBytes(aad, ciphertext)));
   return {
     ciphertext_b64: b64.encode(ciphertext), nonce_b64: b64.encode(nonce), aad_b64: b64.encode(aad),
     protocol_version: '1.0', kex_algorithm: 'x25519', kdf_algorithm: 'hkdf-sha256', cipher: 'aes-256-gcm',
-    sender_device_id: senderDeviceId, recipient_device_id: recipientDeviceId, session_id: sessionId, msg_counter: state.sendCounter, type: 'e2ee',
+    sender_device_id: senderDeviceId, recipient_device_id: recipientDeviceId, session_id: sessionId, msg_counter: state.sendCounter, key_confirm_b64: keyConfirmB64, type: 'e2ee',
   };
 }
 
@@ -210,11 +218,17 @@ export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, p
       await apiRequest('/api/keys/sessions/upsert', { method: 'POST', body: JSON.stringify(state) });
     }
 
+    const aad = b64.decode(payload.aad_b64);
+    const cipherBytes = b64.decode(payload.ciphertext_b64);
+    if (payload.key_confirm_b64) {
+      const expected = b64.encode(await hmacSha256(keyBytes, concatBytes(aad, cipherBytes)));
+      if (expected !== payload.key_confirm_b64) throw new Error('Key confirmation failed');
+    }
     const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
     const plaintext = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: b64.decode(payload.nonce_b64), additionalData: b64.decode(payload.aad_b64) },
+      { name: 'AES-GCM', iv: b64.decode(payload.nonce_b64), additionalData: aad },
       key,
-      b64.decode(payload.ciphertext_b64),
+      cipherBytes,
     );
     return td.decode(plaintext);
   } catch {
