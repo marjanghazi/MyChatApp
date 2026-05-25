@@ -99,7 +99,13 @@ async function getOrCreateSessionKey(apiRequest, { threadId, senderUid, recipien
 }
 
 export async function encryptMessageEnvelope(apiRequest, { threadId, senderUid, recipientUid, plaintext }) {
-  const key = await getOrCreateSessionKey(apiRequest, { threadId, senderUid, recipientUid });
+  const state = await loadOrCreateRatchetState(apiRequest, threadId, senderUid, recipientUid);
+  const step = await nextChain(state.sendChainKeyB64);
+  state.sendChainKeyB64 = step.nextChainKeyB64;
+  state.sendCounter = (state.sendCounter || 0) + 1;
+  localStorage.setItem(slot(`ratchet_${threadId}_${senderUid}_${recipientUid}`), JSON.stringify(state));
+  await apiRequest('/api/keys/sessions/upsert', { method: 'POST', body: JSON.stringify(state) });
+  const key = await crypto.subtle.importKey('raw', step.msgKeyBytes, { name: 'AES-GCM' }, false, ['encrypt']);
   const senderDeviceId = localStorage.getItem(slot(`device_id_${senderUid}`)) || senderUid;
   const recipientDeviceId = localStorage.getItem(slot(`peer_dev_${recipientUid}`)) || recipientUid;
   const [u1, u2] = ordered(senderUid, recipientUid);
@@ -117,7 +123,13 @@ export async function encryptMessageEnvelope(apiRequest, { threadId, senderUid, 
 export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, payload, recipientUid, senderUid) {
   if (!payload?.ciphertext_b64 || !payload?.nonce_b64 || !payload?.aad_b64) return null;
   try {
-    const key = await getOrCreateSessionKey(apiRequest, { threadId, senderUid: recipientUid, recipientUid: senderUid });
+    const state = await loadOrCreateRatchetState(apiRequest, threadId, recipientUid, senderUid);
+    const step = await nextChain(state.recvChainKeyB64);
+    state.recvChainKeyB64 = step.nextChainKeyB64;
+    state.recvCounter = (state.recvCounter || 0) + 1;
+    localStorage.setItem(slot(`ratchet_${threadId}_${recipientUid}_${senderUid}`), JSON.stringify(state));
+    await apiRequest('/api/keys/sessions/upsert', { method: 'POST', body: JSON.stringify(state) });
+    const key = await crypto.subtle.importKey('raw', step.msgKeyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
     const plaintext = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: b64.decode(payload.nonce_b64), additionalData: b64.decode(payload.aad_b64) },
       key,
@@ -126,5 +138,36 @@ export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, p
     return td.decode(plaintext);
   } catch {
     return null;
+  }
+}
+
+
+async function hmacSha256(keyBytes, dataBytes) {
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', key, dataBytes));
+}
+
+async function nextChain(chainKeyB64) {
+  const ck = b64.decode(chainKeyB64);
+  const nextCk = await hmacSha256(ck, te.encode('chain-next'));
+  const msgKey = await hmacSha256(ck, te.encode('msg-key'));
+  return { nextChainKeyB64: b64.encode(nextCk), msgKeyBytes: msgKey.slice(0, 32) };
+}
+
+export async function loadOrCreateRatchetState(apiRequest, threadId, userId, peerUserId) {
+  const cache = localStorage.getItem(slot(`ratchet_${threadId}_${userId}_${peerUserId}`));
+  if (cache) return JSON.parse(cache);
+  try {
+    const srv = await apiRequest(`/api/keys/sessions/${encodeURIComponent(threadId)}/${encodeURIComponent(userId)}/${encodeURIComponent(peerUserId)}`);
+    localStorage.setItem(slot(`ratchet_${threadId}_${userId}_${peerUserId}`), JSON.stringify(srv));
+    return srv;
+  } catch {
+    const base = await sha256Bytes(te.encode(`rk/${threadId}/${ordered(userId, peerUserId).join('/')}`));
+    const send = await hmacSha256(base, te.encode('send-init'));
+    const recv = await hmacSha256(base, te.encode('recv-init'));
+    const state = { threadId, userId, peerUserId, rootKeyB64: b64.encode(base), sendChainKeyB64: b64.encode(send), recvChainKeyB64: b64.encode(recv), sendCounter: 0, recvCounter: 0 };
+    localStorage.setItem(slot(`ratchet_${threadId}_${userId}_${peerUserId}`), JSON.stringify(state));
+    await apiRequest('/api/keys/sessions/upsert', { method: 'POST', body: JSON.stringify(state) });
+    return state;
   }
 }

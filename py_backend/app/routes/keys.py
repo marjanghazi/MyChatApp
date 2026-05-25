@@ -104,3 +104,42 @@ def consume_prekey(body: dict):
         'prekeyId': row['prekey_id'],
         'publicKeyB64': row['prekey_public_key_b64'],
     }
+
+
+@router.post('/sessions/upsert')
+def upsert_session(body: dict):
+    thread_id = body.get('threadId')
+    user_id = body.get('userId')
+    peer_user_id = body.get('peerUserId')
+    root_key_b64 = body.get('rootKeyB64')
+    send_chain_key_b64 = body.get('sendChainKeyB64')
+    recv_chain_key_b64 = body.get('recvChainKeyB64')
+    must(thread_id, 'threadId')
+    must(user_id, 'userId')
+    must(peer_user_id, 'peerUserId')
+    must(root_key_b64, 'rootKeyB64')
+    must(send_chain_key_b64, 'sendChainKeyB64')
+    must(recv_chain_key_b64, 'recvChainKeyB64')
+
+    q(
+        'INSERT INTO e2ee_sessions(thread_id,user_id,peer_user_id,root_key_b64,send_chain_key_b64,recv_chain_key_b64,send_counter,recv_counter) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(thread_id,user_id,peer_user_id) DO UPDATE SET root_key_b64=EXCLUDED.root_key_b64, send_chain_key_b64=EXCLUDED.send_chain_key_b64, recv_chain_key_b64=EXCLUDED.recv_chain_key_b64, send_counter=EXCLUDED.send_counter, recv_counter=EXCLUDED.recv_counter, updated_at=now()',
+        (thread_id, user_id, peer_user_id, root_key_b64, send_chain_key_b64, recv_chain_key_b64, int(body.get('sendCounter') or 0), int(body.get('recvCounter') or 0)),
+    )
+    return {'ok': True}
+
+
+@router.get('/sessions/{thread_id}/{user_id}/{peer_user_id}')
+def get_session(thread_id: str, user_id: str, peer_user_id: str):
+    row = q('SELECT * FROM e2ee_sessions WHERE thread_id=%s AND user_id=%s AND peer_user_id=%s', (thread_id, user_id, peer_user_id), fetch='one')
+    if not row:
+        raise HTTPException(status_code=404, detail='Session not found')
+    return {
+        'threadId': row['thread_id'],
+        'userId': row['user_id'],
+        'peerUserId': row['peer_user_id'],
+        'rootKeyB64': row['root_key_b64'],
+        'sendChainKeyB64': row['send_chain_key_b64'],
+        'recvChainKeyB64': row['recv_chain_key_b64'],
+        'sendCounter': row['send_counter'],
+        'recvCounter': row['recv_counter'],
+    }

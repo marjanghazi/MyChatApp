@@ -109,3 +109,19 @@ CREATE TABLE IF NOT EXISTS one_time_prekeys (
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE(device_id, prekey_id)
 );
+
+
+CREATE TABLE IF NOT EXISTS e2ee_sessions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  thread_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  peer_user_id TEXT NOT NULL,
+  root_key_b64 TEXT NOT NULL,
+  send_chain_key_b64 TEXT NOT NULL,
+  recv_chain_key_b64 TEXT NOT NULL,
+  send_counter BIGINT DEFAULT 0,
+  recv_counter BIGINT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(thread_id, user_id, peer_user_id)
+);
