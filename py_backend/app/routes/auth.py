@@ -1,33 +1,34 @@
 from __future__ import annotations
 
+import os
 import secrets
 
 from fastapi import APIRouter, HTTPException
-from passlib.hash import pbkdf2_sha256
 
 from app.db import q
 from app.errors import must
+from app.security.jwt_service import JwtService
+from app.security.passwords import PasswordHasher
 
 router = APIRouter(prefix='/api/auth', tags=['auth'])
 
-
-def _hash_password(value: str) -> str:
-    # pbkdf2_sha256 avoids bcrypt backend/version issues and has no 72-byte limit.
-    return pbkdf2_sha256.hash(value)
+password_hasher = PasswordHasher()
+jwt_service = JwtService(secret=os.getenv('JWT_SECRET', 'change-me-in-env'), algorithm='HS256', ttl_minutes=int(os.getenv('JWT_TTL_MINUTES', '15')))
 
 
-def _verify_password(value: str, hashed: str) -> bool:
-    return pbkdf2_sha256.verify(value, hashed)
-
-
-def _to_user(row):
+def _to_user(row, *, device_id: str):
+    access_token = jwt_service.issue_access_token(user_id=row['uid'], device_id=device_id)
+    refresh_token = secrets.token_urlsafe(32)
     return {
         'uid': row['uid'],
         'email': row['email'],
         'displayName': row['display_name'],
         'photoURL': row['photo_url'],
-        'idToken': secrets.token_urlsafe(24),
-        'refreshToken': secrets.token_urlsafe(24),
+        'idToken': access_token,
+        'refreshToken': refresh_token,
+        'deviceId': device_id,
+        'tokenType': 'Bearer',
+        'kexAlgorithm': 'x25519',
     }
 
 
@@ -42,13 +43,14 @@ def register(body: dict):
     try:
         q(
             "INSERT INTO users(uid,email,password_hash,display_name,is_online) VALUES (%s,%s,%s,%s,true)",
-            (uid, email, _hash_password(password), body.get('displayName') or ''),
+            (uid, email, password_hasher.hash(password), body.get('displayName') or ''),
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     row = q("SELECT * FROM users WHERE uid=%s", (uid,), fetch='one')
-    return {'user': _to_user(row)}
+    device_id = body.get('deviceId') or secrets.token_hex(8)
+    return {'user': _to_user(row, device_id=device_id)}
 
 
 @router.post('/login')
@@ -59,9 +61,10 @@ def login(body: dict):
     must(password, 'password')
 
     row = q("SELECT * FROM users WHERE email=%s", (email,), fetch='one')
-    if not row or not _verify_password(password, row['password_hash']):
+    if not row or not password_hasher.verify(password, row['password_hash']):
         raise HTTPException(status_code=400, detail='Invalid credentials')
-    return {'user': _to_user(row)}
+    device_id = body.get('deviceId') or secrets.token_hex(8)
+    return {'user': _to_user(row, device_id=device_id)}
 
 
 @router.post('/update-profile')
@@ -73,4 +76,5 @@ def update_profile(body: dict):
         (body.get('displayName') or '', body.get('photoURL') or '', uid),
     )
     row = q("SELECT * FROM users WHERE uid=%s", (uid,), fetch='one')
-    return {'user': _to_user(row)}
+    device_id = body.get('deviceId') or secrets.token_hex(8)
+    return {'user': _to_user(row, device_id=device_id)}

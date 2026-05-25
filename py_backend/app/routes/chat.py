@@ -1,9 +1,12 @@
+import os
+
 from fastapi import APIRouter, HTTPException
 from app.db import q
 from app.errors import must, must_thread_type
 
 router = APIRouter(prefix='/api/chat', tags=['chat'])
 ALLOWED_SIGNAL_TYPES={'offer','answer','candidate','ice','hangup'}
+E2EE_REQUIRED = os.getenv('E2EE_REQUIRED', 'false').lower() == 'true'
 
 
 def _normalize_signal_row(row: dict) -> dict:
@@ -44,12 +47,33 @@ def _normalize_message_row(row: dict) -> dict:
 def send(body: dict):
     tt=body.get('threadType'); must_thread_type(tt); must(body.get('actorUid'),'actorUid'); must(body.get('threadId'),'threadId')
     payload=body.get('payload') or {}
+
+    has_envelope = all(payload.get(k) for k in ['ciphertext_b64', 'nonce_b64', 'aad_b64'])
+    if E2EE_REQUIRED and not has_envelope:
+        raise HTTPException(status_code=400, detail='E2EE_REQUIRED is enabled. Send encrypted envelope payload only.')
+
+    if has_envelope:
+        payload['e2ee'] = {
+            'protocol_version': payload.get('protocol_version', '1.0'),
+            'kex_algorithm': payload.get('kex_algorithm', 'x25519'),
+            'kdf_algorithm': payload.get('kdf_algorithm', 'hkdf-sha256'),
+            'cipher': payload.get('cipher', 'aes-256-gcm'),
+            'sender_device_id': payload.get('sender_device_id'),
+            'recipient_device_id': payload.get('recipient_device_id'),
+            'session_id': payload.get('session_id'),
+        }
+        safe_last_message = '[E2EE message]'
+        safe_last_type = 'e2ee'
+    else:
+        safe_last_message = payload.get('text', '')
+        safe_last_type = payload.get('type')
+
     q('INSERT INTO messages(thread_type,thread_id,sender_id,receiver_id,sender_name,body,delivered_to,read_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
       (tt,body['threadId'],body['actorUid'],body.get('targetUid'),body.get('actorName'),payload,[body['actorUid']],[body['actorUid']]))
     if tt=='direct':
       q('INSERT INTO conversations(id,participants,participant_phones,last_message,last_message_type,last_message_sender,last_message_status,last_message_at,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,now(),now()) ON CONFLICT(id) DO UPDATE SET last_message=EXCLUDED.last_message,last_message_type=EXCLUDED.last_message_type,last_message_sender=EXCLUDED.last_message_sender,last_message_status=EXCLUDED.last_message_status,last_message_at=now(),updated_at=now()',
-        (body['threadId'], [body['actorUid'],body.get('targetUid')], [body.get('actorPhone',''),body.get('targetPhone','')], payload.get('text',''), payload.get('type'), body['actorUid'], 'sent'))
-    return {'ok':True}
+        (body['threadId'], [body['actorUid'],body.get('targetUid')], [body.get('actorPhone',''),body.get('targetPhone','')], safe_last_message, safe_last_type, body['actorUid'], 'sent'))
+    return {'ok':True, 'encrypted': has_envelope}
 
 @router.patch('/messages/edit')
 def edit(body: dict):
