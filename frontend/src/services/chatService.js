@@ -1,10 +1,24 @@
 import { apiRequest } from "./apiClient";
+import { encryptMessageEnvelope, tryDecryptEnvelope } from "./e2eeService";
 
-export const sendChatMessage = (body) =>
-  apiRequest("/api/chat/messages/send", {
-    method: "POST",
+export const sendChatMessage = async (body) => {
+  const payload = body?.payload || {};
+  const hasEnvelope = payload.ciphertext_b64 && payload.nonce_b64 && payload.aad_b64;
+  if (!hasEnvelope && typeof payload.text === 'string') {
+    const envelope = await encryptMessageEnvelope({
+      threadId: body.threadId,
+      senderDeviceId: body.actorUid,
+      recipientDeviceId: body.targetUid || 'group',
+      sessionId: `${body.threadId}:${body.actorUid}:${body.targetUid || 'group'}`,
+      plaintext: payload.text,
+    });
+    body = { ...body, payload: envelope };
+  }
+  return apiRequest('/api/chat/messages/send', {
+    method: 'POST',
     body: JSON.stringify(body),
   });
+};
 
 export const editChatMessage = (body) =>
   apiRequest("/api/chat/messages/edit", {
@@ -30,8 +44,14 @@ export const toggleChatMessageFlag = (body) =>
     body: JSON.stringify(body),
   });
 
-export const fetchThreadMessages = (threadType, threadId, uid) =>
-  apiRequest(`/api/chat/messages?threadType=${encodeURIComponent(threadType)}&threadId=${encodeURIComponent(threadId)}&uid=${encodeURIComponent(uid || "")}`);
+export const fetchThreadMessages = async (threadType, threadId, uid) => {
+  const out = await apiRequest(`/api/chat/messages?threadType=${encodeURIComponent(threadType)}&threadId=${encodeURIComponent(threadId)}&uid=${encodeURIComponent(uid || '')}`);
+  const next = await Promise.all((out.messages || []).map(async (m) => {
+    const text = await tryDecryptEnvelope(threadId, m);
+    return text ? { ...m, text } : m;
+  }));
+  return { ...out, messages: next };
+};
 
 export const fetchCallLogs = (conversationId) =>
   apiRequest(`/api/chat/call-logs?conversationId=${encodeURIComponent(conversationId)}`);
