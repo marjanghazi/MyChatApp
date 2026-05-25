@@ -85,3 +85,9 @@ Recommended approach used here:
 - function-level intent comments/docstrings,
 - architecture + flow docs (this file + blueprint files).
 
+
+
+## 11) PQC migration file map
+
+For a concrete file-by-file migration checklist, see `PQC_MIGRATION_PLAYBOOK.md`.
+This includes backend and frontend files to change for Classical -> Hybrid -> Full PQC transition.
