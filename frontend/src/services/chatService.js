@@ -1,5 +1,5 @@
 import { apiRequest } from "./apiClient";
-import { encryptMessageEnvelope, tryDecryptEnvelopeWithParticipants } from "./e2eeService";
+import { encryptMessageEnvelope, resetRatchetSession, runLocalE2EESelfTest, tryDecryptEnvelopeWithParticipants } from "./e2eeService";
 
 export const sendChatMessage = async (body) => {
   const payload = body?.payload || {};
@@ -43,11 +43,33 @@ export const toggleChatMessageFlag = (body) =>
     body: JSON.stringify(body),
   });
 
+const decryptionFailureStreak = new Map();
+
 export const fetchThreadMessages = async (threadType, threadId, uid) => {
   const out = await apiRequest(`/api/chat/messages?threadType=${encodeURIComponent(threadType)}&threadId=${encodeURIComponent(threadId)}&uid=${encodeURIComponent(uid || '')}`);
   const next = await Promise.all((out.messages || []).map(async (m) => {
-    const text = await tryDecryptEnvelopeWithParticipants(apiRequest, threadId, m, uid, m.senderId || m.sender_id);
-    return text ? { ...m, text } : m;
+    const sender = m.senderId || m.sender_id;
+    const text = await tryDecryptEnvelopeWithParticipants(apiRequest, threadId, m, uid, sender);
+    if (text) {
+      const k = `${threadId}:${uid}:${sender}`;
+      decryptionFailureStreak.set(k, 0);
+      return { ...m, text };
+    }
+    if (m?.ciphertext_b64 && sender && uid) {
+      const k = `${threadId}:${uid}:${sender}`;
+      const fails = (decryptionFailureStreak.get(k) || 0) + 1;
+      decryptionFailureStreak.set(k, fails);
+      if (fails >= 3) {
+        try {
+          await resetRatchetSession(apiRequest, threadId, uid, sender);
+          await runLocalE2EESelfTest(apiRequest, { threadId, aliceUid: uid, bobUid: sender });
+          decryptionFailureStreak.set(k, 0);
+        } catch {
+          // keep streak for next attempt
+        }
+      }
+    }
+    return m;
   }));
   return { ...out, messages: next };
 };
