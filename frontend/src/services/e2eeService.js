@@ -30,6 +30,11 @@ async function sha256Bytes(input) {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', input));
 }
 
+async function peerFingerprint(pubB64) {
+  const digest = await sha256Bytes(b64.decode(pubB64));
+  return Array.from(digest).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 
 
 function skippedSlot(threadId, userId, peerUserId, counter) {
@@ -117,7 +122,16 @@ async function resolvePeerBundle(apiRequest, recipientUid) {
       const ok = await verifyBytesEd25519(bundle.identity_sign_public_key_b64, b64.decode(bundle.signed_prekey_public_key_b64), bundle.signed_prekey_signature_b64);
       if (!ok) throw new Error('Signed prekey verification failed');
     }
-    if (bundle.identity_public_key_b64) localStorage.setItem(slot(`peer_pub_${recipientUid}`), bundle.identity_public_key_b64);
+    if (bundle.identity_public_key_b64) {
+      const fpr = await peerFingerprint(bundle.identity_public_key_b64);
+      const fprSlot = slot(`peer_fpr_${recipientUid}`);
+      const previous = localStorage.getItem(fprSlot);
+      if (previous && previous !== fpr) {
+        throw new Error('Peer identity key changed. Potential MITM detected. Re-verify safety number.');
+      }
+      localStorage.setItem(fprSlot, fpr);
+      localStorage.setItem(slot(`peer_pub_${recipientUid}`), bundle.identity_public_key_b64);
+    }
     return bundle;
   } catch {
     const cached = localStorage.getItem(slot(`peer_pub_${recipientUid}`));
@@ -237,4 +251,12 @@ export async function loadOrCreateRatchetState(apiRequest, threadId, userId, pee
     await apiRequest('/api/keys/sessions/upsert', { method: 'POST', body: JSON.stringify(state) });
     return state;
   }
+}
+
+
+export async function getSafetyNumber(recipientUid) {
+  const peerPub = localStorage.getItem(slot(`peer_pub_${recipientUid}`));
+  if (!peerPub) return null;
+  const fpr = await peerFingerprint(peerPub);
+  return fpr.match(/.{1,4}/g)?.join(' ') || fpr;
 }
