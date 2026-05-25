@@ -98,6 +98,7 @@ function App() {
   const [sidebarWidth, setSidebarWidth] = useState(380);
   const isResizingRef = useRef(false);
   const [showGroupDetails,  setShowGroupDetails]  = useState(false);
+  const [openCallLogsTick,  setOpenCallLogsTick]  = useState(0);
 
   // ── Persist theme ────────────────────────────────────────────────────────
   useEffect(() => { localStorage.setItem("appTheme", appTheme); }, [appTheme]);
@@ -656,9 +657,19 @@ function App() {
       <aside className="qx-nav-rail" aria-label="Primary navigation">
         <div className="qx-nav-rail-top">
           <button type="button" className="qx-rail-btn qx-rail-btn--active" title="Chats">💬</button>
-          <button type="button" className="qx-rail-btn" title="Status">◉</button>
-          <button type="button" className="qx-rail-btn" title="Calls">📞</button>
-          <button type="button" className="qx-rail-btn" title="Communities">👥</button>
+          <button type="button" className="qx-rail-btn" title="Status" onClick={() => setStatusText("Status is coming soon.")}>◉</button>
+          <button
+            type="button"
+            className="qx-rail-btn"
+            title="Calls"
+            onClick={() => {
+              setOpenCallLogsTick((prev) => prev + 1);
+              setStatusText("Opened call logs.");
+            }}
+          >
+            📞
+          </button>
+          <button type="button" className="qx-rail-btn" title="New Group" onClick={() => setShowGroupModal(true)}>👥</button>
         </div>
         <div className="qx-nav-rail-bottom">
           <button
@@ -839,6 +850,7 @@ function App() {
           onUpdateConversation={({ type, channel }) => {
             if (type === "toggleFollow") toggleFollowChannel(channel);
           }}
+          openCallLogsTick={openCallLogsTick}
         />
       )}
 

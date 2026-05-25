@@ -57,6 +57,7 @@ const ChatWindow = ({
   onUpdateCallState,      // optional parent notification
   onSendCallSignal,       // optional parent notification
   onStopCallMedia,        // optional parent notification
+  openCallLogsTick = 0,
 }) => {
   // ── UI state ──────────────────────────────────────────────────────────────
   const [messages, setMessages]               = useState([]);
@@ -143,6 +144,10 @@ const ChatWindow = ({
   useEffect(() => { selectedCallRef.current = selectedCall; }, [selectedCall]);
 
   useEffect(() => { if (statusText) showToast(statusText); }, [statusText]);
+  useEffect(() => {
+    if (!openCallLogsTick) return;
+    setShowCallLogs(true);
+  }, [openCallLogsTick]);
 
   const visibleMessages = useMemo(() => {
     const v = chatSearch.trim().toLowerCase();
