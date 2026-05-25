@@ -157,3 +157,37 @@ def reset_session(body: dict):
     must(peer_user_id, 'peerUserId')
     q('DELETE FROM e2ee_sessions WHERE thread_id=%s AND user_id=%s AND peer_user_id=%s', (thread_id, user_id, peer_user_id))
     return {'ok': True}
+
+
+@router.post('/replay/check')
+def replay_check(body: dict):
+    thread_id = body.get('threadId')
+    recipient_user_id = body.get('recipientUserId')
+    sender_user_id = body.get('senderUserId')
+    msg_counter = int(body.get('msgCounter') or 0)
+    must(thread_id, 'threadId')
+    must(recipient_user_id, 'recipientUserId')
+    must(sender_user_id, 'senderUserId')
+    if msg_counter <= 0:
+        raise HTTPException(status_code=400, detail='msgCounter must be > 0')
+
+    row = q('SELECT id FROM e2ee_replay_index WHERE thread_id=%s AND recipient_user_id=%s AND sender_user_id=%s AND msg_counter=%s',
+            (thread_id, recipient_user_id, sender_user_id, msg_counter), fetch='one')
+    return {'ok': True, 'seen': bool(row)}
+
+
+@router.post('/replay/mark')
+def replay_mark(body: dict):
+    thread_id = body.get('threadId')
+    recipient_user_id = body.get('recipientUserId')
+    sender_user_id = body.get('senderUserId')
+    msg_counter = int(body.get('msgCounter') or 0)
+    must(thread_id, 'threadId')
+    must(recipient_user_id, 'recipientUserId')
+    must(sender_user_id, 'senderUserId')
+    if msg_counter <= 0:
+        raise HTTPException(status_code=400, detail='msgCounter must be > 0')
+
+    q('INSERT INTO e2ee_replay_index(thread_id,recipient_user_id,sender_user_id,msg_counter) VALUES (%s,%s,%s,%s) ON CONFLICT(thread_id, recipient_user_id, sender_user_id, msg_counter) DO NOTHING',
+      (thread_id, recipient_user_id, sender_user_id, msg_counter))
+    return {'ok': True}

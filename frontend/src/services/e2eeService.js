@@ -199,6 +199,11 @@ export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, p
     const state = await loadOrCreateRatchetState(apiRequest, threadId, recipientUid, senderUid);
     const targetCounter = Number(payload.msg_counter || 0);
 
+    if (targetCounter > 0) {
+      const replay = await apiRequest('/api/keys/replay/check', { method: 'POST', body: JSON.stringify({ threadId, recipientUserId: recipientUid, senderUserId: senderUid, msgCounter: targetCounter }) });
+      if (replay?.seen) throw new Error('Replay detected by server index');
+    }
+
     const currentRecv = Number(state.recvCounter || 0);
     const skipped = getSkippedKey(threadId, recipientUid, senderUid, targetCounter);
     let keyBytes = null;
@@ -236,6 +241,9 @@ export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, p
       key,
       cipherBytes,
     );
+    if (targetCounter > 0) {
+      await apiRequest('/api/keys/replay/mark', { method: 'POST', body: JSON.stringify({ threadId, recipientUserId: recipientUid, senderUserId: senderUid, msgCounter: targetCounter }) });
+    }
     return td.decode(plaintext);
   } catch {
     return null;

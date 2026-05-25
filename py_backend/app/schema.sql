@@ -126,3 +126,14 @@ CREATE TABLE IF NOT EXISTS e2ee_sessions (
   updated_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE(thread_id, user_id, peer_user_id)
 );
+
+
+CREATE TABLE IF NOT EXISTS e2ee_replay_index (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  thread_id TEXT NOT NULL,
+  recipient_user_id TEXT NOT NULL,
+  sender_user_id TEXT NOT NULL,
+  msg_counter BIGINT NOT NULL,
+  consumed_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(thread_id, recipient_user_id, sender_user_id, msg_counter)
+);
