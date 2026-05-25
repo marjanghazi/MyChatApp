@@ -905,6 +905,11 @@ const ChatWindow = ({
     if (activeThreadType === "group" && selectedGroup) {
       await editChatMessage({ threadType: "group", threadId: selectedGroup.id, messageId: msg.id, text: newText });
     }
+    setMessages((prev) => prev.map((entry) => (
+      entry.id === msg.id
+        ? { ...entry, text: newText, editedAt: new Date().toISOString() }
+        : entry
+    )));
     setMessageInput("");
     setEditingMessageId(null);
     setStatusText("✓ Message edited.");

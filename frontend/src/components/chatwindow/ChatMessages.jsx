@@ -224,7 +224,7 @@ const ChatMessages = ({
                     ⋮
                   </button>
                   {actionMenuFor === msg.id && (
-                    <div className="qx-msg-actions-menu" onClick={(event) => event.stopPropagation()}>
+                    <div className={`qx-msg-actions-menu ${isMine ? "qx-msg-actions-menu--mine" : "qx-msg-actions-menu--theirs"}`} onClick={(event) => event.stopPropagation()}>
                       <button type="button" className="qx-msg-actions-item" onClick={() => { setReplyTo(msg); setReplyTargetUser(msg.senderId ? usersById.get(msg.senderId) || null : null); setActionMenuFor(null); }}>
                         ↩ Reply
                       </button>

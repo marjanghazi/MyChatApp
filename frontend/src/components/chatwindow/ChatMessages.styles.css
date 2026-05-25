@@ -111,3 +111,13 @@
 .qx-msg-actions-item--danger {
   color: #ff9a9a;
 }
+
+.qx-msg-actions-menu--mine {
+  right: 0;
+  left: auto;
+}
+
+.qx-msg-actions-menu--theirs {
+  left: 0;
+  right: auto;
+}
