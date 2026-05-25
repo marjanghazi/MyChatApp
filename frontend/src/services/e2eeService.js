@@ -1,4 +1,4 @@
-const KEY_NS = 'pqc_e2ee_v2';
+const KEY_NS = 'pqc_e2ee_v3';
 const te = new TextEncoder();
 const td = new TextDecoder();
 
@@ -8,10 +8,7 @@ const b64 = {
 };
 
 const slot = (k) => `${KEY_NS}:${k}`;
-
-async function importAesKey(raw) {
-  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-}
+const ordered = (a, b) => [String(a || ''), String(b || '')].sort();
 
 async function importX25519Public(rawBytes) {
   return crypto.subtle.importKey('raw', rawBytes, { name: 'X25519' }, true, []);
@@ -26,6 +23,10 @@ async function hkdfKey(sharedSecret, saltBytes, infoBytes) {
     false,
     ['encrypt', 'decrypt'],
   );
+}
+
+async function sha256Bytes(input) {
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', input));
 }
 
 export async function ensureDeviceIdentity(userId) {
@@ -62,20 +63,36 @@ export async function registerDeviceBundle(apiRequest, userId) {
   return ensured.deviceId;
 }
 
+async function resolvePeerBundle(apiRequest, recipientUid) {
+  const forcedDev = localStorage.getItem(slot(`peer_dev_${recipientUid}`)) || recipientUid;
+  try {
+    const bundle = await apiRequest(`/api/keys/bundle/${encodeURIComponent(recipientUid)}/${encodeURIComponent(forcedDev)}`);
+    localStorage.setItem(slot(`peer_dev_${recipientUid}`), bundle.device_id || forcedDev);
+    if (bundle.identity_public_key_b64) localStorage.setItem(slot(`peer_pub_${recipientUid}`), bundle.identity_public_key_b64);
+    return bundle;
+  } catch {
+    const cached = localStorage.getItem(slot(`peer_pub_${recipientUid}`));
+    if (!cached) throw new Error('Peer bundle unavailable and no cached key exists');
+    return { device_id: forcedDev, identity_public_key_b64: cached };
+  }
+}
+
 async function getOrCreateSessionKey(apiRequest, { threadId, senderUid, recipientUid }) {
-  const sessionSlot = slot(`session_${threadId}_${senderUid}_${recipientUid}`);
+  const [u1, u2] = ordered(senderUid, recipientUid);
+  const sessionSlot = slot(`session_${threadId}_${u1}_${u2}`);
   const existing = localStorage.getItem(sessionSlot);
-  if (existing) return importAesKey(b64.decode(existing));
+  if (existing) {
+    return crypto.subtle.importKey('raw', b64.decode(existing), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  }
 
   const myPriv = await getPrivateKey(senderUid);
-  const myDeviceId = localStorage.getItem(slot(`device_id_${senderUid}`)) || senderUid;
-  const peerDeviceId = localStorage.getItem(slot(`peer_dev_${recipientUid}`)) || recipientUid;
-  const bundle = await apiRequest(`/api/keys/bundle/${encodeURIComponent(recipientUid)}/${encodeURIComponent(peerDeviceId)}`);
+  const bundle = await resolvePeerBundle(apiRequest, recipientUid);
   const peerPub = await importX25519Public(b64.decode(bundle.identity_public_key_b64));
-  const shared = await crypto.subtle.deriveBits({ name: 'X25519', public: peerPub }, myPriv, 256);
-  const salt = crypto.getRandomValues(new Uint8Array(32));
-  const info = te.encode(`chat/v1/session/${threadId}/${senderUid}/${recipientUid}`);
-  const key = await hkdfKey(new Uint8Array(shared), salt, info);
+  const shared = new Uint8Array(await crypto.subtle.deriveBits({ name: 'X25519', public: peerPub }, myPriv, 256));
+
+  const salt = await sha256Bytes(te.encode(`chat/v1/salt/${threadId}/${u1}/${u2}`));
+  const info = te.encode(`chat/v1/session/${threadId}/${u1}/${u2}`);
+  const key = await hkdfKey(shared, salt, info);
   const raw = new Uint8Array(await crypto.subtle.exportKey('raw', key));
   localStorage.setItem(sessionSlot, b64.encode(raw));
   return key;
@@ -85,7 +102,8 @@ export async function encryptMessageEnvelope(apiRequest, { threadId, senderUid, 
   const key = await getOrCreateSessionKey(apiRequest, { threadId, senderUid, recipientUid });
   const senderDeviceId = localStorage.getItem(slot(`device_id_${senderUid}`)) || senderUid;
   const recipientDeviceId = localStorage.getItem(slot(`peer_dev_${recipientUid}`)) || recipientUid;
-  const sessionId = `${threadId}:${senderUid}:${recipientUid}`;
+  const [u1, u2] = ordered(senderUid, recipientUid);
+  const sessionId = `${threadId}:${u1}:${u2}`;
   const nonce = crypto.getRandomValues(new Uint8Array(12));
   const aad = te.encode(JSON.stringify({ threadId, senderDeviceId, recipientDeviceId, sessionId, protocol_version: '1.0' }));
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce, additionalData: aad }, key, te.encode(plaintext));
@@ -100,7 +118,13 @@ export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, p
   if (!payload?.ciphertext_b64 || !payload?.nonce_b64 || !payload?.aad_b64) return null;
   try {
     const key = await getOrCreateSessionKey(apiRequest, { threadId, senderUid: recipientUid, recipientUid: senderUid });
-    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64.decode(payload.nonce_b64), additionalData: b64.decode(payload.aad_b64) }, key, b64.decode(payload.ciphertext_b64));
+    const plaintext = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: b64.decode(payload.nonce_b64), additionalData: b64.decode(payload.aad_b64) },
+      key,
+      b64.decode(payload.ciphertext_b64),
+    );
     return td.decode(plaintext);
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
