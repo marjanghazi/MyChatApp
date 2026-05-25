@@ -1,3 +1,9 @@
+/**
+ * Thread service: conversation list APIs and sidebar preview hydration.
+ *
+ * Hydration is intentionally decryption-aware so placeholder previews
+ * (`[E2EE message]`) are replaced with local plaintext when possible.
+ */
 import { apiRequest } from "./apiClient";
 import { tryDecryptEnvelopeWithParticipants } from "./e2eeService";
 

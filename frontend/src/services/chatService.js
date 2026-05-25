@@ -1,3 +1,10 @@
+/**
+ * Chat service: transport wrappers + E2EE-aware send/fetch helpers.
+ *
+ * Security model:
+ * - Plaintext is encrypted client-side before hitting backend `/messages/send`.
+ * - Message fetch attempts client-side decryption and only renders plaintext locally.
+ */
 import { apiRequest } from "./apiClient";
 import { encryptMessageEnvelope, resetRatchetSession, runLocalE2EESelfTest, tryDecryptEnvelopeWithParticipants } from "./e2eeService";
 

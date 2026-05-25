@@ -1,3 +1,12 @@
+/**
+ * Browser E2EE engine used by chat features.
+ *
+ * Current classical pipeline:
+ *   X25519 -> HKDF-SHA256 -> AES-256-GCM
+ *
+ * This module keeps crypto logic decoupled from transport so the KEX layer
+ * can be migrated to hybrid/PQC later with minimal impact.
+ */
 const KEY_NS = 'pqc_e2ee_v3';
 const te = new TextEncoder();
 const td = new TextDecoder();

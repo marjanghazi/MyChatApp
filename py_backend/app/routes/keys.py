@@ -1,3 +1,10 @@
+"""E2EE key-management API routes.
+
+The backend never decrypts message content here.
+It stores/retrieves device bundles, prekeys, session state, and replay markers
+so clients can perform end-to-end cryptography locally.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -19,6 +26,7 @@ def _b64(data: bytes) -> str:
 
 @router.post('/devices/register')
 def register_device(body: dict):
+    # Register/update a device key bundle used by peers for session bootstrap.
     user_id = body.get('userId')
     device_id = body.get('deviceId') or secrets.token_hex(8)
     must(user_id, 'userId')
@@ -110,6 +118,7 @@ def consume_prekey(body: dict):
 
 @router.post('/sessions/upsert')
 def upsert_session(body: dict):
+    # Persist client-side ratchet/session state for cross-device/page continuity.
     thread_id = body.get('threadId')
     user_id = body.get('userId')
     peer_user_id = body.get('peerUserId')
@@ -161,6 +170,7 @@ def reset_session(body: dict):
 
 @router.post('/replay/check')
 def replay_check(body: dict):
+    # Replay guard lookup by (thread, recipient, sender, msg_counter).
     thread_id = body.get('threadId')
     recipient_user_id = body.get('recipientUserId')
     sender_user_id = body.get('senderUserId')
@@ -178,6 +188,7 @@ def replay_check(body: dict):
 
 @router.post('/replay/mark')
 def replay_mark(body: dict):
+    # Mark a counter as consumed to detect duplicate/replayed envelopes.
     thread_id = body.get('threadId')
     recipient_user_id = body.get('recipientUserId')
     sender_user_id = body.get('senderUserId')

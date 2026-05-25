@@ -1,3 +1,9 @@
+"""Chat routes with E2EE envelope support.
+
+When E2EE_REQUIRED is enabled, plaintext send/edit flows are rejected and
+clients must submit encrypted envelopes only.
+"""
+
 import os
 
 from fastapi import APIRouter, HTTPException
@@ -10,6 +16,7 @@ E2EE_REQUIRED = os.getenv('E2EE_REQUIRED', 'false').lower() == 'true'
 
 
 def _assert_e2ee_payload(payload: dict) -> None:
+    """Validate minimal encrypted envelope fields required by backend contract."""
     required = ['ciphertext_b64', 'nonce_b64', 'aad_b64', 'sender_device_id', 'recipient_device_id', 'session_id']
     missing = [k for k in required if not payload.get(k)]
     if missing:
@@ -52,6 +59,7 @@ def _normalize_message_row(row: dict) -> dict:
 
 @router.post('/messages/send')
 def send(body: dict):
+    # Store encrypted payload as-is; backend does not decrypt content.
     tt=body.get('threadType'); must_thread_type(tt); must(body.get('actorUid'),'actorUid'); must(body.get('threadId'),'threadId')
     payload=body.get('payload') or {}
 
