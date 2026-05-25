@@ -156,3 +156,14 @@ Consume one-time prekey during session init:
 ```bash
 curl -X POST http://127.0.0.1:4000/api/keys/prekeys/consume   -H 'Content-Type: application/json'   -d '{"userId":"u2","deviceId":"devB"}'
 ```
+
+
+## 14) Protocol self-test and reset
+
+If ratchet state desync happens, reset session state:
+
+```bash
+curl -X POST http://127.0.0.1:4000/api/keys/sessions/reset \
+  -H "Content-Type: application/json" \
+  -d "{\"threadId\":\"u1_u2\",\"userId\":\"u1\",\"peerUserId\":\"u2\"}"
+```

@@ -11,6 +11,7 @@ const slot = (k) => `${KEY_NS}:${k}`;
 const SKIPPED_NS = `${KEY_NS}:skipped`;
 const ordered = (a, b) => [String(a || ''), String(b || '')].sort();
 
+
 async function importX25519Public(rawBytes) {
   return crypto.subtle.importKey('raw', rawBytes, { name: 'X25519' }, true, []);
 }
@@ -101,23 +102,11 @@ export async function ensureDeviceIdentity(userId) {
   return { deviceId, identityPublicKeyB64: b64.encode(pub) };
 }
 
+
 async function getPrivateKey(userId) {
   const raw = localStorage.getItem(slot(`device_priv_${userId}`));
   if (!raw) throw new Error('Missing local device private key');
   return crypto.subtle.importKey('pkcs8', b64.decode(raw), { name: 'X25519' }, false, ['deriveBits']);
-}
-
-export async function registerDeviceBundle(apiRequest, userId) {
-  const ensured = await ensureDeviceIdentity(userId);
-  const identityPublicKeyB64 = localStorage.getItem(slot(`device_pub_${userId}`));
-  const signedPrekeyPublicKeyB64 = identityPublicKeyB64;
-  const signing = await ensureSigningIdentity(userId);
-  const signedPrekeySignatureB64 = await signBytesEd25519(userId, b64.decode(signedPrekeyPublicKeyB64));
-  await apiRequest('/api/keys/devices/register', {
-    method: 'POST',
-    body: JSON.stringify({ userId, deviceId: ensured.deviceId, identityPublicKeyB64, signedPrekeyPublicKeyB64, signedPrekeySignatureB64, identitySignPublicKeyB64: signing.pub }),
-  });
-  return ensured.deviceId;
 }
 
 async function resolvePeerBundle(apiRequest, recipientUid) {
@@ -145,6 +134,19 @@ async function resolvePeerBundle(apiRequest, recipientUid) {
     if (!cached) throw new Error('Peer bundle unavailable and no cached key exists');
     return { device_id: forcedDev, identity_public_key_b64: cached };
   }
+}
+
+export async function registerDeviceBundle(apiRequest, userId) {
+  const ensured = await ensureDeviceIdentity(userId);
+  const identityPublicKeyB64 = localStorage.getItem(slot(`device_pub_${userId}`));
+  const signedPrekeyPublicKeyB64 = identityPublicKeyB64;
+  const signing = await ensureSigningIdentity(userId);
+  const signedPrekeySignatureB64 = await signBytesEd25519(userId, b64.decode(signedPrekeyPublicKeyB64));
+  await apiRequest('/api/keys/devices/register', {
+    method: 'POST',
+    body: JSON.stringify({ userId, deviceId: ensured.deviceId, identityPublicKeyB64, signedPrekeyPublicKeyB64, signedPrekeySignatureB64, identitySignPublicKeyB64: signing.pub }),
+  });
+  return ensured.deviceId;
 }
 
 async function getOrCreateSessionKey(apiRequest, { threadId, senderUid, recipientUid }) {
@@ -197,8 +199,12 @@ export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, p
     const state = await loadOrCreateRatchetState(apiRequest, threadId, recipientUid, senderUid);
     const targetCounter = Number(payload.msg_counter || 0);
 
+    const currentRecv = Number(state.recvCounter || 0);
     const skipped = getSkippedKey(threadId, recipientUid, senderUid, targetCounter);
     let keyBytes = null;
+    if (targetCounter && targetCounter <= currentRecv && !skipped) {
+      throw new Error('Replay detected: counter already consumed');
+    }
     if (skipped) {
       keyBytes = b64.decode(skipped);
       localStorage.removeItem(skippedSlot(threadId, recipientUid, senderUid, targetCounter));
@@ -273,4 +279,25 @@ export async function getSafetyNumber(recipientUid) {
   if (!peerPub) return null;
   const fpr = await peerFingerprint(peerPub);
   return fpr.match(/.{1,4}/g)?.join(' ') || fpr;
+}
+
+
+export async function resetRatchetSession(apiRequest, threadId, userId, peerUserId) {
+  localStorage.removeItem(slot(`ratchet_${threadId}_${userId}_${peerUserId}`));
+  for (const k of Object.keys(localStorage)) {
+    if (k.startsWith(`${SKIPPED_NS}:${threadId}:${userId}:${peerUserId}:`)) {
+      localStorage.removeItem(k);
+    }
+  }
+  await apiRequest('/api/keys/sessions/reset', {
+    method: 'POST',
+    body: JSON.stringify({ threadId, userId, peerUserId }),
+  });
+}
+
+export async function runLocalE2EESelfTest(apiRequest, { threadId, aliceUid, bobUid, sampleText = 'hello e2ee' }) {
+  const env = await encryptMessageEnvelope(apiRequest, { threadId, senderUid: aliceUid, recipientUid: bobUid, plaintext: sampleText });
+  const dec = await tryDecryptEnvelopeWithParticipants(apiRequest, threadId, env, bobUid, aliceUid);
+  if (dec !== sampleText) throw new Error('E2EE self-test failed: roundtrip mismatch');
+  return { ok: true };
 }

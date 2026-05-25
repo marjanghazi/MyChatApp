@@ -145,3 +145,15 @@ def get_session(thread_id: str, user_id: str, peer_user_id: str):
         'sendCounter': row['send_counter'],
         'recvCounter': row['recv_counter'],
     }
+
+
+@router.post('/sessions/reset')
+def reset_session(body: dict):
+    thread_id = body.get('threadId')
+    user_id = body.get('userId')
+    peer_user_id = body.get('peerUserId')
+    must(thread_id, 'threadId')
+    must(user_id, 'userId')
+    must(peer_user_id, 'peerUserId')
+    q('DELETE FROM e2ee_sessions WHERE thread_id=%s AND user_id=%s AND peer_user_id=%s', (thread_id, user_id, peer_user_id))
+    return {'ok': True}
