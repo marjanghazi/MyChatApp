@@ -194,6 +194,22 @@ export async function encryptMessageEnvelope(apiRequest, { threadId, senderUid, 
   };
 }
 
+async function tryLegacySessionDecrypt(apiRequest, threadId, payload, recipientUid, senderUid) {
+  try {
+    const key = await getOrCreateSessionKey(apiRequest, { threadId, senderUid: recipientUid, recipientUid: senderUid });
+    const aad = b64.decode(payload.aad_b64);
+    const cipherBytes = b64.decode(payload.ciphertext_b64);
+    const plaintext = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: b64.decode(payload.nonce_b64), additionalData: aad },
+      key,
+      cipherBytes,
+    );
+    return td.decode(plaintext);
+  } catch {
+    return null;
+  }
+}
+
 export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, payload, recipientUid, senderUid) {
   if (!payload?.ciphertext_b64 || !payload?.nonce_b64 || !payload?.aad_b64) return null;
   try {
@@ -252,7 +268,7 @@ export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, p
     }
     return td.decode(plaintext);
   } catch {
-    return null;
+    return tryLegacySessionDecrypt(apiRequest, threadId, payload, recipientUid, senderUid);
   }
 }
 
