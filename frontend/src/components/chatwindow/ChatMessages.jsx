@@ -1,4 +1,5 @@
 
+import { useEffect, useRef, useState } from "react";
 import "./ChatMessages.styles.css";
 
 const ChatMessages = ({
@@ -26,8 +27,20 @@ const ChatMessages = ({
   messagesEndRef,
   setMessageInput,
   setEditingMessageId,
-}) => (
-  <section className="qx-messages">
+}) => {
+  const [actionMenuFor, setActionMenuFor] = useState(null);
+  const messageAreaRef = useRef(null);
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event) => {
+      if (!messageAreaRef.current?.contains(event.target)) setActionMenuFor(null);
+    };
+    document.addEventListener("click", closeOnOutsideClick);
+    return () => document.removeEventListener("click", closeOnOutsideClick);
+  }, []);
+
+  return (
+  <section className="qx-messages" ref={messageAreaRef}>
     {visibleMessages.length === 0 && (
       <div className="qx-messages-empty">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="40" height="40"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
@@ -201,79 +214,49 @@ const ChatMessages = ({
                 <div className="qx-msg-actions">
                   <button
                     type="button"
-                    className="qx-msg-action-btn"
-                    title="Reply"
-                    onClick={() => {
-                      setReplyTo(msg);
-                      setReplyTargetUser(msg.senderId ? usersById.get(msg.senderId) || null : null);
+                    className="qx-msg-action-btn qx-msg-action-btn--menu"
+                    title="Message options"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setActionMenuFor(actionMenuFor === msg.id ? null : msg.id);
                     }}
                   >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 00-4-4H4"/></svg>
+                    ⋮
                   </button>
-                  {activeThreadType === "group" && !isMine && (
-                    <button
-                      type="button"
-                      className="qx-msg-action-btn"
-                      title="Reply privately"
-                      onClick={() => replyPrivately(msg)}
-                    >
-                      🔒
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="qx-msg-action-btn"
-                    title="Forward"
-                    onClick={() => setForwardOpenFor(forwardOpenFor === msg.id ? null : msg.id)}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 014-4h12"/></svg>
-                  </button>
-                  {isMine && !msg.deletedForEveryone && (
-                    <>
-                      <button
-                        type="button"
-                        className="qx-msg-action-btn"
-                        title="Edit"
-                        onClick={() => { setMessageInput(msg.text || ""); setEditingMessageId(msg.id); }}
-                      >
-                        ✏️
+                  {actionMenuFor === msg.id && (
+                    <div className="qx-msg-actions-menu" onClick={(event) => event.stopPropagation()}>
+                      <button type="button" className="qx-msg-actions-item" onClick={() => { setReplyTo(msg); setReplyTargetUser(msg.senderId ? usersById.get(msg.senderId) || null : null); setActionMenuFor(null); }}>
+                        ↩ Reply
                       </button>
-                      <button
-                        type="button"
-                        className="qx-msg-action-btn qx-msg-action-btn--danger"
-                        title="Delete for everyone"
-                        onClick={() => deleteForEveryone(msg)}
-                      >
-                        🚫
+                      {activeThreadType === "group" && !isMine && (
+                        <button type="button" className="qx-msg-actions-item" onClick={() => { replyPrivately(msg); setActionMenuFor(null); }}>
+                          🔒 Reply privately
+                        </button>
+                      )}
+                      <button type="button" className="qx-msg-actions-item" onClick={() => { setForwardOpenFor(forwardOpenFor === msg.id ? null : msg.id); setActionMenuFor(null); }}>
+                        ↪ Forward
                       </button>
-                    </>
+                      {isMine && !msg.deletedForEveryone && (
+                        <button type="button" className="qx-msg-actions-item" onClick={() => { setMessageInput(msg.text || ""); setEditingMessageId(msg.id); setActionMenuFor(null); }}>
+                          ✏️ Edit
+                        </button>
+                      )}
+                      <button type="button" className="qx-msg-actions-item" onClick={() => { toggleMessageFlag(msg, "starredBy"); setActionMenuFor(null); }}>
+                        ⭐ Star
+                      </button>
+                      <button type="button" className="qx-msg-actions-item" onClick={() => { toggleMessageFlag(msg, "pinnedBy"); setActionMenuFor(null); }}>
+                        📌 Pin
+                      </button>
+                      {isMine && !msg.deletedForEveryone && (
+                        <button type="button" className="qx-msg-actions-item qx-msg-actions-item--danger" onClick={() => { deleteForEveryone(msg); setActionMenuFor(null); }}>
+                          🚫 Delete for everyone
+                        </button>
+                      )}
+                      <button type="button" className="qx-msg-actions-item qx-msg-actions-item--danger" onClick={() => { deleteForMe(msg); setActionMenuFor(null); }}>
+                        🗑️ Delete for me
+                      </button>
+                    </div>
                   )}
-                  {!isMine && (
-                    <button
-                      type="button"
-                      className="qx-msg-action-btn"
-                      title="Delete for me"
-                      onClick={() => deleteForMe(msg)}
-                    >
-                      🗑️
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="qx-msg-action-btn"
-                    title="Star"
-                    onClick={() => toggleMessageFlag(msg, "starredBy")}
-                  >
-                    ⭐
-                  </button>
-                  <button
-                    type="button"
-                    className="qx-msg-action-btn"
-                    title="Pin"
-                    onClick={() => toggleMessageFlag(msg, "pinnedBy")}
-                  >
-                    📌
-                  </button>
                 </div>
                 {forwardOpenFor === msg.id && (
                   <div className="qx-forward-panel">
@@ -294,6 +277,7 @@ const ChatMessages = ({
     })}
     <div ref={messagesEndRef} />
   </section>
-);
+  );
+};
 
 export default ChatMessages;
