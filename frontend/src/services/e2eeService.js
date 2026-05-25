@@ -277,9 +277,12 @@ export async function loadOrCreateRatchetState(apiRequest, threadId, userId, pee
     localStorage.setItem(slot(`ratchet_${threadId}_${userId}_${peerUserId}`), JSON.stringify(srv));
     return srv;
   } catch {
-    const base = await sha256Bytes(te.encode(`rk/${threadId}/${ordered(userId, peerUserId).join('/')}`));
-    const send = await hmacSha256(base, te.encode('send-init'));
-    const recv = await hmacSha256(base, te.encode('recv-init'));
+    const [u1, u2] = ordered(userId, peerUserId);
+    const base = await sha256Bytes(te.encode(`rk/${threadId}/${u1}/${u2}`));
+    const sendLabel = userId === u1 ? 'chain:u1->u2' : 'chain:u2->u1';
+    const recvLabel = userId === u1 ? 'chain:u2->u1' : 'chain:u1->u2';
+    const send = await hmacSha256(base, te.encode(sendLabel));
+    const recv = await hmacSha256(base, te.encode(recvLabel));
     const state = { threadId, userId, peerUserId, rootKeyB64: b64.encode(base), sendChainKeyB64: b64.encode(send), recvChainKeyB64: b64.encode(recv), sendCounter: 0, recvCounter: 0 };
     localStorage.setItem(slot(`ratchet_${threadId}_${userId}_${peerUserId}`), JSON.stringify(state));
     await apiRequest('/api/keys/sessions/upsert', { method: 'POST', body: JSON.stringify(state) });
