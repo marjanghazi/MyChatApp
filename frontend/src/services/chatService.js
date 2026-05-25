@@ -8,6 +8,7 @@
 import { apiRequest } from "./apiClient";
 import { encryptMessageEnvelope, resetRatchetSession, runLocalE2EESelfTest, tryDecryptEnvelopeWithParticipants } from "./e2eeService";
 
+// Sends a chat message; auto-encrypts plaintext payloads into E2EE envelope when needed.
 export const sendChatMessage = async (body) => {
   const payload = body?.payload || {};
   const hasEnvelope = payload.ciphertext_b64 && payload.nonce_b64 && payload.aad_b64;
@@ -52,6 +53,7 @@ export const toggleChatMessageFlag = (body) =>
 
 const decryptionFailureStreak = new Map();
 
+// Fetches thread messages and attempts client-side decryption per message envelope.
 export const fetchThreadMessages = async (threadType, threadId, uid) => {
   const out = await apiRequest(`/api/chat/messages?threadType=${encodeURIComponent(threadType)}&threadId=${encodeURIComponent(threadId)}&uid=${encodeURIComponent(uid || '')}`);
   const next = await Promise.all((out.messages || []).map(async (m) => {

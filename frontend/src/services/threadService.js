@@ -24,6 +24,7 @@ export const fetchGroups = async (uid) =>
 export const fetchChannels = async () => apiRequest("/api/thread/channels");
 
 
+// Hydrates sidebar last-message preview by decrypting encrypted placeholders when possible.
 export const hydrateConversationPreviews = async (conversations, uid) => {
   const entries = Object.entries(conversations || {});
   const updates = await Promise.all(entries.map(async ([conversationId, conv]) => {

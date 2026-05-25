@@ -37,6 +37,7 @@ def _normalize_signal_row(row: dict) -> dict:
 
 
 def _normalize_message_row(row: dict) -> dict:
+    """Normalize DB row shape to frontend message contract fields."""
     msg = dict(row or {})
     body = msg.pop('body', None)
     if isinstance(body, dict):
@@ -126,6 +127,7 @@ def flag(body: dict):
 
 @router.get('/messages')
 def list_messages(threadType: str, threadId: str, uid: str|None=None):
+    """List thread messages and filter user-deleted messages for caller."""
     must_thread_type(threadType); rows=q('SELECT * FROM messages WHERE thread_type=%s AND thread_id=%s ORDER BY created_at LIMIT 300', (threadType,threadId), fetch='all') or []
     if uid: rows=[r for r in rows if uid not in (r['deleted_for'] or [])]
     return {'messages':[_normalize_message_row(r) for r in rows]}

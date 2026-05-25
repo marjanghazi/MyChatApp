@@ -49,6 +49,7 @@ def register_device(body: dict):
 
 @router.get('/bundle/{user_id}/{device_id}')
 def key_bundle(user_id: str, device_id: str):
+    """Return public key bundle for a specific user device."""
     row = q('SELECT * FROM user_devices WHERE user_id=%s AND device_id=%s', (user_id, device_id), fetch='one')
     if not row:
         raise HTTPException(status_code=404, detail='Device key bundle not found')
@@ -71,6 +72,7 @@ def generate_demo_keypair():
 
 @router.post('/prekeys/upload')
 def upload_prekeys(body: dict):
+    """Upload one-time prekeys for asynchronous session bootstrap."""
     user_id = body.get('userId')
     device_id = body.get('deviceId')
     prekeys = body.get('prekeys') or []
@@ -95,6 +97,7 @@ def upload_prekeys(body: dict):
 
 @router.post('/prekeys/consume')
 def consume_prekey(body: dict):
+    """Consume and return one unused one-time prekey."""
     user_id = body.get('userId')
     device_id = body.get('deviceId')
     must(user_id, 'userId')
@@ -141,6 +144,7 @@ def upsert_session(body: dict):
 
 @router.get('/sessions/{thread_id}/{user_id}/{peer_user_id}')
 def get_session(thread_id: str, user_id: str, peer_user_id: str):
+    """Read persisted ratchet/session state for this direction."""
     row = q('SELECT * FROM e2ee_sessions WHERE thread_id=%s AND user_id=%s AND peer_user_id=%s', (thread_id, user_id, peer_user_id), fetch='one')
     if not row:
         raise HTTPException(status_code=404, detail='Session not found')
@@ -158,6 +162,7 @@ def get_session(thread_id: str, user_id: str, peer_user_id: str):
 
 @router.post('/sessions/reset')
 def reset_session(body: dict):
+    """Delete persisted session state for a thread direction."""
     thread_id = body.get('threadId')
     user_id = body.get('userId')
     peer_user_id = body.get('peerUserId')
