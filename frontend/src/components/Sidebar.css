@@ -1,4 +1,4 @@
-/* Sidebar.css - WhatsApp Style for QuantX with App.css theme integration */
+/* Sidebar.css - QUANTX Style for QuantX with App.css theme integration */
 
 .wa-sidebar {
   display: flex;
@@ -398,7 +398,7 @@
   background: var(--surface-hover);
 }
 
-/* Filter Tabs - WhatsApp Style */
+/* Filter Tabs - QUANTX Style */
 .wa-filter-tabs {
   display: flex;
   border-bottom: 2px solid var(--border);
