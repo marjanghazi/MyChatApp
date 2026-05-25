@@ -268,6 +268,23 @@ export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, p
     }
     return td.decode(plaintext);
   } catch {
+    try {
+      const targetCounter = Number(payload.msg_counter || 0);
+      if (Number.isInteger(targetCounter) && targetCounter > 0) {
+        const keyBytes = await deriveMessageKeyForCounter(threadId, senderUid, recipientUid, targetCounter);
+        const aad = b64.decode(payload.aad_b64);
+        const cipherBytes = b64.decode(payload.ciphertext_b64);
+        const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+        const plaintext = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: b64.decode(payload.nonce_b64), additionalData: aad },
+          key,
+          cipherBytes,
+        );
+        return td.decode(plaintext);
+      }
+    } catch {
+      // Continue to legacy fallback path.
+    }
     return tryLegacySessionDecrypt(apiRequest, threadId, payload, recipientUid, senderUid);
   }
 }
@@ -283,6 +300,23 @@ async function nextChain(chainKeyB64) {
   const nextCk = await hmacSha256(ck, te.encode('chain-next'));
   const msgKey = await hmacSha256(ck, te.encode('msg-key'));
   return { nextChainKeyB64: b64.encode(nextCk), msgKeyBytes: msgKey.slice(0, 32) };
+}
+
+async function deriveMessageKeyForCounter(threadId, fromUserId, toUserId, counter) {
+  if (!Number.isInteger(counter) || counter <= 0) {
+    throw new Error('Invalid msg_counter');
+  }
+  const [u1, u2] = ordered(fromUserId, toUserId);
+  const base = await sha256Bytes(te.encode(`rk/${threadId}/${u1}/${u2}`));
+  const directionLabel = fromUserId === u1 ? 'chain:u1->u2' : 'chain:u2->u1';
+  let chain = b64.encode(await hmacSha256(base, te.encode(directionLabel)));
+  let keyBytes = null;
+  for (let i = 0; i < counter; i += 1) {
+    const step = await nextChain(chain);
+    chain = step.nextChainKeyB64;
+    keyBytes = step.msgKeyBytes;
+  }
+  return keyBytes;
 }
 
 export async function loadOrCreateRatchetState(apiRequest, threadId, userId, peerUserId) {

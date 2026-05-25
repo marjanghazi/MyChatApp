@@ -49,7 +49,10 @@ export const fetchThreadMessages = async (threadType, threadId, uid) => {
   const out = await apiRequest(`/api/chat/messages?threadType=${encodeURIComponent(threadType)}&threadId=${encodeURIComponent(threadId)}&uid=${encodeURIComponent(uid || '')}`);
   const next = await Promise.all((out.messages || []).map(async (m) => {
     const sender = m.senderId || m.sender_id;
-    const text = await tryDecryptEnvelopeWithParticipants(apiRequest, threadId, m, uid, sender);
+    const receiver = m.receiverId || m.receiver_id;
+    const effectiveRecipient = sender === uid ? receiver : uid;
+    const effectiveSender = sender === uid ? uid : sender;
+    const text = await tryDecryptEnvelopeWithParticipants(apiRequest, threadId, m, effectiveRecipient, effectiveSender);
     if (text) {
       const k = `${threadId}:${uid}:${sender}`;
       decryptionFailureStreak.set(k, 0);
