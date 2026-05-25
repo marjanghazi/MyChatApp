@@ -5,6 +5,7 @@ from contextlib import contextmanager
 
 import psycopg2
 import psycopg2.extras
+from psycopg2 import OperationalError
 from psycopg2.pool import SimpleConnectionPool
 
 
@@ -12,6 +13,9 @@ _POOL: SimpleConnectionPool | None = None
 
 
 def _dsn() -> str:
+    database_url = os.getenv('DATABASE_URL', '').strip()
+    if database_url:
+        return database_url
     host = os.getenv('POSTGRES_HOST', 'localhost')
     port = os.getenv('POSTGRES_PORT', '5432')
     db = os.getenv('POSTGRES_DB', 'quantx_db')
@@ -32,11 +36,20 @@ def _pool() -> SimpleConnectionPool:
 @contextmanager
 def get_conn():
     pool = _pool()
-    conn = pool.getconn()
+    conn = None
     try:
+        conn = pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute('SELECT 1')
         yield conn
+    except OperationalError as exc:
+        if conn is not None:
+            pool.putconn(conn, close=True)
+            conn = None
+        raise RuntimeError('Database connection error. Check POSTGRES_* or DATABASE_URL settings.') from exc
     finally:
-        pool.putconn(conn)
+        if conn is not None:
+            pool.putconn(conn)
 
 
 def init_db() -> None:
@@ -68,3 +81,11 @@ def q(query: str, params: tuple = (), fetch: str | None = None):
                 rows = cur.fetchall()
         conn.commit()
     return rows
+
+
+def db_healthcheck() -> dict:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute('SELECT current_database(), current_user')
+            db_name, db_user = cur.fetchone()
+    return {'ok': True, 'database': db_name, 'user': db_user}

@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import cors_origins, load_env
-from app.db import init_db
+from app.db import db_healthcheck, init_db
 from app.routes.auth import router as auth_router
 from app.routes.chat import router as chat_router
 from app.routes.community import router as community_router
@@ -38,6 +38,11 @@ def root():
 @app.get('/api/health')
 def health():
     return {'ok': True, 'service': 'pqc-chat-backend'}
+
+
+@app.get('/api/health/db')
+def health_db():
+    return db_healthcheck()
 
 
 app.include_router(auth_router)
