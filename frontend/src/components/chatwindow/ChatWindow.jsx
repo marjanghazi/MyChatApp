@@ -1018,6 +1018,7 @@ const ChatWindow = ({
       await fn({
         selectedConversationId,
         selectedConversation,
+        selectedUser,
         authUser,
         setShowCallLogs,
         setStatusText,

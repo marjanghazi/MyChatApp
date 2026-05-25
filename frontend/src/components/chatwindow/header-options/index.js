@@ -11,6 +11,7 @@ import { scheduleCallOption } from "./scheduleCall";
 import { reportOption } from "./report";
 import { blockOption } from "./block";
 import { clearChatHeaderOption } from "./clearChat";
+import { safetyNumberOption } from "./safetyNumber";
 
 export const headerOptionsHandlers = {
   contactInfo: contactInfoOption,
@@ -26,5 +27,6 @@ export const headerOptionsHandlers = {
   report: reportOption,
   block: blockOption,
   clearChat: clearChatHeaderOption,
+  safetyNumber: safetyNumberOption,
   deleteChat: clearChatHeaderOption,
 };

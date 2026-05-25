@@ -105,6 +105,7 @@ const ChatHeader = ({
             {showHeaderMenu && (
               <div className="qx-header-menu" onClick={(e) => e.stopPropagation()}>
                 <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("contactInfo")}>Contact info</button>
+                <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("safetyNumber")}>Safety number</button>
                 <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("search")}>Search</button>
                 <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("selectMessages")}>Select messages</button>
                 <button type="button" className="qx-header-menu-item" onClick={() => onHeaderMenuAction?.("toggleMute")}>{selectedMuted ? "Unmute notifications" : "Mute notifications"}</button>
