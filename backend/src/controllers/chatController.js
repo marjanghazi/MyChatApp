@@ -174,7 +174,23 @@ export const editMessage = async (req, res, next) => {
 
     const ref = getMessageRef({ threadType, threadId, messageId });
     must(ref, "messageRef");
-    await ref.update({ text, editedAt: FieldValue.serverTimestamp() });
+    const updatePayload = { text, editedAt: FieldValue.serverTimestamp() };
+    const payload = req.body?.payload;
+    if (payload?.ciphertext_b64 && payload?.nonce_b64 && payload?.aad_b64) {
+      Object.assign(updatePayload, {
+        ciphertext_b64: payload.ciphertext_b64,
+        nonce_b64: payload.nonce_b64,
+        aad_b64: payload.aad_b64,
+        sender_device_id: payload.sender_device_id || null,
+        recipient_device_id: payload.recipient_device_id || null,
+        session_id: payload.session_id || null,
+        protocol_version: payload.protocol_version || null,
+        kex_algorithm: payload.kex_algorithm || null,
+        kdf_algorithm: payload.kdf_algorithm || null,
+        cipher: payload.cipher || null,
+      });
+    }
+    await ref.update(updatePayload);
     res.json({ ok: true });
   } catch (error) {
     next(error);

@@ -94,9 +94,35 @@ def send(body: dict):
 
 @router.patch('/messages/edit')
 def edit(body: dict):
-    if E2EE_REQUIRED:
-        raise HTTPException(status_code=400, detail='Edit plaintext endpoint disabled in E2EE_REQUIRED mode.')
-    must(body.get('messageId'),'messageId'); must(body.get('text'),'text'); q("UPDATE messages SET body = jsonb_set(body,'{text}',to_jsonb(%s::text)), edited_at=now() WHERE id=%s", (body['text'], body['messageId'])); return {'ok':True}
+    must(body.get('messageId'),'messageId')
+    must(body.get('text'),'text')
+    payload = body.get('payload') or {}
+    if E2EE_REQUIRED and not all(payload.get(k) for k in ['ciphertext_b64', 'nonce_b64', 'aad_b64']):
+        raise HTTPException(status_code=400, detail='E2EE_REQUIRED is enabled. Edit requires encrypted envelope payload.')
+
+    row = q('SELECT body FROM messages WHERE id=%s', (body['messageId'],), fetch='one')
+    if not row:
+        raise HTTPException(status_code=404, detail='Message not found')
+
+    next_body = dict(row.get('body') or {})
+    next_body['text'] = body['text']
+    if all(payload.get(k) for k in ['ciphertext_b64', 'nonce_b64', 'aad_b64']):
+        _assert_e2ee_payload(payload)
+        next_body.update({
+            'ciphertext_b64': payload.get('ciphertext_b64'),
+            'nonce_b64': payload.get('nonce_b64'),
+            'aad_b64': payload.get('aad_b64'),
+            'sender_device_id': payload.get('sender_device_id'),
+            'recipient_device_id': payload.get('recipient_device_id'),
+            'session_id': payload.get('session_id'),
+            'protocol_version': payload.get('protocol_version', '1.0'),
+            'kex_algorithm': payload.get('kex_algorithm', 'x25519'),
+            'kdf_algorithm': payload.get('kdf_algorithm', 'hkdf-sha256'),
+            'cipher': payload.get('cipher', 'aes-256-gcm'),
+        })
+
+    q('UPDATE messages SET body=%s, edited_at=now() WHERE id=%s', (next_body, body['messageId']))
+    return {'ok':True}
 @router.patch('/messages/delete-for-me')
 def delme(body: dict):
     must(body.get('messageId'),'messageId'); must(body.get('actorUid'),'actorUid'); q('UPDATE messages SET deleted_for=array_append(deleted_for,%s) WHERE id=%s AND NOT (%s = ANY(deleted_for))',(body['actorUid'],body['messageId'],body['actorUid'])); return {'ok':True}

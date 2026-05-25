@@ -900,7 +900,7 @@ const ChatWindow = ({
     const newText = messageInput.trim();
     if (!newText) return;
     if (activeThreadType === "direct" && selectedConversationId) {
-      await editChatMessage({ threadType: "direct", threadId: selectedConversationId, messageId: msg.id, text: newText });
+      await editChatMessage({ threadType: "direct", threadId: selectedConversationId, messageId: msg.id, text: newText, actorUid: authUser.uid, targetUid: selectedUser?.uid || msg.receiverId });
     }
     if (activeThreadType === "group" && selectedGroup) {
       await editChatMessage({ threadType: "group", threadId: selectedGroup.id, messageId: msg.id, text: newText });

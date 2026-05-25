@@ -27,11 +27,22 @@ export const sendChatMessage = async (body) => {
   });
 };
 
-export const editChatMessage = (body) =>
-  apiRequest("/api/chat/messages/edit", {
+export const editChatMessage = async (body) => {
+  const nextBody = { ...body };
+  if (nextBody?.threadType === "direct" && nextBody?.threadId && nextBody?.actorUid && nextBody?.targetUid && typeof nextBody?.text === "string") {
+    const envelope = await encryptMessageEnvelope(apiRequest, {
+      threadId: nextBody.threadId,
+      senderUid: nextBody.actorUid,
+      recipientUid: nextBody.targetUid,
+      plaintext: nextBody.text,
+    });
+    nextBody.payload = envelope;
+  }
+  return apiRequest("/api/chat/messages/edit", {
     method: "PATCH",
-    body: JSON.stringify(body),
+    body: JSON.stringify(nextBody),
   });
+};
 
 export const deleteChatMessageForMe = (body) =>
   apiRequest("/api/chat/messages/delete-for-me", {
