@@ -1,6 +1,7 @@
 // Sidebar.jsx — QuantX · QUANTX-style Sidebar
 import { useMemo, useState } from "react";
 import "./Sidebar.css";
+import { sidebarContactOptionsHandlers } from "./sidebar-contact-options";
 
 const FILTERS = ["All", "Unread", "Groups", "Channels"];
 
@@ -212,22 +213,44 @@ const Sidebar = ({
   };
 
   const markAllAsRead = () => {
-    // TODO: Implement mark all as read functionality
+    const tasks = Object.entries(conversations)
+      .filter(([, conv]) => Number(conv?.unreadBy?.[authUser.uid] || 0) > 0)
+      .map(([conversationId, conversation]) =>
+        sidebarContactOptionsHandlers.markAsRead({
+          conversationId,
+          conversation,
+          authUser,
+        })
+      );
+
+    Promise.allSettled(tasks);
     setShowMenu(false);
+  };
+
+  const runItemOption = async (item, action) => {
+    if (item.type !== "direct") return;
+
+    const conversationId = conversationIdFor(authUser.uid, item.user.uid);
+    const conversation = conversations[conversationId] || item.conv || {};
+    const handler = sidebarContactOptionsHandlers[action];
+    if (!handler) return;
+
+    await handler({ conversationId, conversation, authUser });
+    setActiveItemMenuKey(null);
   };
 
   const renderItemOptionsMenu = (item) => {
     const isGroup = item.type === "group";
     return (
       <div className="wa-item-options-menu" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="wa-item-options-menu-item">Archive chat</button>
-        <button type="button" className="wa-item-options-menu-item">Mute notifications</button>
-        <button type="button" className="wa-item-options-menu-item">{item.isPinned ? "Unpin chat" : "Pin chat"}</button>
-        <button type="button" className="wa-item-options-menu-item">Mark as unread</button>
-        <button type="button" className="wa-item-options-menu-item">Add to favorites</button>
-        <button type="button" className="wa-item-options-menu-item">Add to list</button>
+        <button type="button" className="wa-item-options-menu-item" onClick={() => runItemOption(item, "archiveChat")}>Archive chat</button>
+        <button type="button" className="wa-item-options-menu-item" onClick={() => runItemOption(item, "toggleMuteNotifications")}>{item.isMuted ? "Unmute notifications" : "Mute notifications"}</button>
+        <button type="button" className="wa-item-options-menu-item" onClick={() => runItemOption(item, "togglePinChat")}>{item.isPinned ? "Unpin chat" : "Pin chat"}</button>
+        <button type="button" className="wa-item-options-menu-item" onClick={() => runItemOption(item, "markAsUnread")}>Mark as unread</button>
+        <button type="button" className="wa-item-options-menu-item" onClick={() => runItemOption(item, "toggleFavorite")}>Add to favorites</button>
+        <button type="button" className="wa-item-options-menu-item" onClick={() => runItemOption(item, "toggleListTag")}>Add to list</button>
         <div className="wa-item-options-menu-divider" />
-        <button type="button" className="wa-item-options-menu-item">Clear chat</button>
+        <button type="button" className="wa-item-options-menu-item" onClick={() => runItemOption(item, "clearChat")}>Clear chat</button>
         {isGroup && <button type="button" className="wa-item-options-menu-item wa-item-options-menu-item-danger">Exit group</button>}
       </div>
     );
