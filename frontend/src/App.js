@@ -62,6 +62,9 @@ const syncedProfileUids = new Set();
 
 function App() {
   const lastProfileSyncRef = useRef({ uid: "", ts: 0 });
+  const lastConversationFingerprintRef = useRef("");
+  const hydratedConversationsRef = useRef({});
+  const deliveryAckInFlightRef = useRef(new Set());
   const [appTheme, setAppTheme] = useState(() => {
     const saved = localStorage.getItem("appTheme");
     if (saved === "light" || saved === "dark") return saved;
@@ -218,6 +221,20 @@ function App() {
 
     let active = true;
     let inFlight = false;
+    const buildConversationFingerprint = (items) =>
+      Object.entries(items || {})
+        .map(([id, conv]) => {
+          const updatedAt =
+            conv?.lastMessageAt?.seconds ||
+            conv?.lastMessageAt ||
+            conv?.updatedAt?.seconds ||
+            conv?.updatedAt ||
+            "";
+          return `${id}:${updatedAt}:${conv?.lastMessageStatus || ""}:${conv?.typingUpdatedAt || ""}`;
+        })
+        .sort()
+        .join("|");
+
     const load = async () => {
       if (!active || inFlight || isPageHidden()) return;
       inFlight = true;
@@ -225,9 +242,20 @@ function App() {
         const { conversations: next } = await fetchConversations(uid);
         if (active) {
           const base = next || {};
+          const fingerprint = buildConversationFingerprint(base);
+
+          if (fingerprint === lastConversationFingerprintRef.current) {
+            setConversations(hydratedConversationsRef.current);
+            return;
+          }
+
+          lastConversationFingerprintRef.current = fingerprint;
           setConversations(base);
           const hydrated = await hydrateConversationPreviews(base, uid);
-          if (active) setConversations(hydrated);
+          if (active) {
+            hydratedConversationsRef.current = hydrated;
+            setConversations(hydrated);
+          }
         }
       } catch {
         if (active) setConversations({});
@@ -250,7 +278,13 @@ function App() {
       conv.lastMessageStatus === "sent"
     );
     pendingDeliveries.forEach(([conversationId]) => {
-      markDelivered(conversationId).catch(() => {});
+      if (deliveryAckInFlightRef.current.has(conversationId)) return;
+      deliveryAckInFlightRef.current.add(conversationId);
+      markDelivered(conversationId)
+        .catch(() => {})
+        .finally(() => {
+          deliveryAckInFlightRef.current.delete(conversationId);
+        });
     });
   }, [conversations, authUser?.uid]);
 
