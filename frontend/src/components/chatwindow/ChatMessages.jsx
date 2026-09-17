@@ -201,6 +201,7 @@ const ChatMessages = ({
                   )}
                   {shouldShowText && <p className="qx-msg-text">{msg.text}</p>}
                   <div className="qx-msg-meta">
+                    {msg.protocol_version === '2.0' && <span className="qx-msg-time" title={msg.suite_id === 'pqc' ? 'ML-KEM-768 · ML-DSA-65 · AES-256-GCM' : 'X25519 · Ed25519 · AES-256-GCM'}>{msg.suite_id === 'pqc' ? 'PQC' : 'Classical'} · </span>}
                     <span className="qx-msg-time">{formatTime(msg.createdAt)}</span>
                     {msg.editedAt && <span className="qx-msg-edited">edited</span>}
                     {(msg.starredBy || []).includes(authUser.uid) && <span className="qx-msg-flag">⭐</span>}

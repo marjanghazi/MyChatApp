@@ -7,10 +7,13 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import cors_origins, load_env
+load_env()
+
 from app.db import db_healthcheck, init_db
 from app.routes.auth import router as auth_router
 from app.routes.chat import router as chat_router
 from app.routes.keys import router as keys_router
+from app.routes.crypto_keys import router as crypto_keys_router
 from app.routes.community import router as community_router
 from app.routes.media import router as media_router
 from app.routes.thread import router as thread_router
@@ -52,12 +55,20 @@ app.include_router(users_router)
 app.include_router(thread_router)
 app.include_router(media_router)
 app.include_router(chat_router)
+app.include_router(crypto_keys_router)
 app.include_router(keys_router)
 
 
 @app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(_request: Request, exc: StarletteHTTPException):
-    message = 'Not Found' if exc.status_code == 404 else str(exc.detail)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    # Preserve deliberate, domain-specific 404s (for example a contact that has
+    # not registered an encryption bundle). Starlette uses the literal
+    # ``Not Found`` for an unmatched route, which is the only case where adding
+    # the requested path is more useful than echoing the detail.
+    if exc.status_code == 404 and str(exc.detail) == 'Not Found':
+        message = f'API route not found: {request.method} {request.url.path}'
+    else:
+        message = str(exc.detail)
     return JSONResponse(status_code=exc.status_code, content={'message': message})
 
 

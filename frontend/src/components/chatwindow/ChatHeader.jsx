@@ -1,5 +1,6 @@
 
 import { useState } from "react";
+import { configuredSuite } from "../../crypto/suites.js";
 
 const ChatHeader = ({
   activeThreadType,
@@ -79,6 +80,7 @@ const ChatHeader = ({
 
       {activeThreadType === "direct" ? (
         <div className="qx-chat-actions">
+          <span className="qx-encryption-badge" title="Direct messages; calls use separate transport">{configuredSuite().label} · AES-256-GCM</span>
           <button type="button" className="qx-icon-btn" title="Video call" onClick={() => startCall("video")}> 
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
           </button>
@@ -127,7 +129,7 @@ const ChatHeader = ({
         </div>
       ) : (
         <div className="qx-chat-actions">
-          <span className="qx-encryption-badge">Community thread</span>
+          <span className="qx-encryption-badge">Community thread · no E2EE</span>
           {activeThreadType === "group" && (
             <button type="button" className="qx-btn qx-btn--danger-soft" onClick={leaveGroup}>
               Leave Group

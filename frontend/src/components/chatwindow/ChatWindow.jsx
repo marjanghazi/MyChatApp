@@ -35,7 +35,7 @@ import {
   addConversationSignal,
   clearConversationForUser,
 } from "../../services/chatService";
-import { uploadMedia } from "../../services/mediaService";
+import { uploadMedia, uploadEncryptedMedia } from "../../services/mediaService";
 import { showToast } from "../../services/alertService";
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -659,6 +659,12 @@ const ChatWindow = ({
       _optimistic: true,
     };
     setMessages((prev) => [...prev, optimisticMessage]);
+    return optimisticId;
+  };
+
+  const removeOptimisticMessage = (messageId) => {
+    if (!messageId) return;
+    setMessages((prev) => prev.filter((message) => message.id !== messageId));
   };
 
   const refreshActiveThreadMessages = async () => {
@@ -693,6 +699,7 @@ const ChatWindow = ({
     setMessageInput("");
 
     if (activeThreadType === "group" && selectedGroup) {
+      let optimisticId = null;
       try {
         let payload = { text: text.trim(), type: "text" };
         if (file) {
@@ -729,7 +736,7 @@ const ChatWindow = ({
               }
             : {}),
         };
-        pushOptimisticMessage({ payload: messagePayload, threadType: "group" });
+        optimisticId = pushOptimisticMessage({ payload: messagePayload, threadType: "group" });
         await sendChatMessage({
           threadType: "group",
           threadId: selectedGroup.id,
@@ -749,6 +756,7 @@ const ChatWindow = ({
         setReplyTargetUser(null);
         refreshActiveThreadMessages();
       } catch (e) {
+        removeOptimisticMessage(optimisticId);
         setMessageInput(previousInput);
         setStatusText("Failed to send: " + e.message);
         return false;
@@ -761,6 +769,7 @@ const ChatWindow = ({
         setStatusText("Only channel owner can publish posts.");
         return false;
       }
+      let optimisticId = null;
       try {
         let payload = { text: text.trim(), type: "post" };
         if (file) {
@@ -784,7 +793,7 @@ const ChatWindow = ({
             setSendingAttachment(false);
           }
         }
-        pushOptimisticMessage({
+        optimisticId = pushOptimisticMessage({
           payload,
           threadType: "channel",
         });
@@ -801,6 +810,7 @@ const ChatWindow = ({
         setStatusText("Post published!");
         setTimeout(() => setStatusText(""), 2000);
       } catch (e) {
+        removeOptimisticMessage(optimisticId);
         setMessageInput(previousInput);
         setStatusText("Failed to send post: " + e.message);
         return false;
@@ -818,11 +828,11 @@ const ChatWindow = ({
       if (file) {
         setSendingAttachment(true);
         try {
-          const fileURL = await uploadToStorage(`attachments/${selectedConversationId}`, file);
+          const attachment = await uploadEncryptedMedia({ uid: authUser.uid, file });
           payload = {
             type: inferMessageTypeFromFile(file),
             text: text.trim() || file.name,
-            fileURL,
+            ...attachment,
             fileName: file.name,
             fileSize: file.size,
             mimeType: file.type || null,
@@ -840,8 +850,9 @@ const ChatWindow = ({
       if (forwardedFrom) payload.forwardedFrom = forwardedFrom;
       const replyPayload = replyTo ? { id: replyTo.id, text: replyTo.text, senderId: replyTo.senderId } : null;
 
+      let optimisticId = null;
       try {
-        pushOptimisticMessage({
+        optimisticId = pushOptimisticMessage({
           payload: {
             ...payload,
             replyTo: replyPayload || undefined,
@@ -867,6 +878,7 @@ const ChatWindow = ({
         setEditingMessageId(null);
         refreshActiveThreadMessages();
       } catch (e) {
+        removeOptimisticMessage(optimisticId);
         setMessageInput(previousInput);
         console.error("sendMessage error:", e);
         setStatusText("Failed to send: " + e.message);
@@ -904,7 +916,8 @@ const ChatWindow = ({
       payload: {
         type: ["image", "video", "audio", "file"].includes(message.type) ? message.type : "text",
         text: message.text || message.fileName || "Forwarded message",
-        fileURL: message.fileURL || null,
+        fileURL: message.encryptedFileURL || message.fileURL || null,
+        ...(message.fileEncryption ? { fileEncryption: message.fileEncryption } : {}),
         fileName: message.fileName || null,
         fileSize: message.fileSize || null,
         mimeType: message.mimeType || null,
@@ -920,7 +933,8 @@ const ChatWindow = ({
     const newText = messageInput.trim();
     if (!newText) return;
     if (activeThreadType === "direct" && selectedConversationId) {
-      await editChatMessage({ threadType: "direct", threadId: selectedConversationId, messageId: msg.id, text: newText, actorUid: authUser.uid, targetUid: selectedUser?.uid || msg.receiverId });
+      await editChatMessage({ threadType: "direct", threadId: selectedConversationId, messageId: msg.id, text: newText,
+        content: Object.fromEntries(['type', 'fileName', 'fileSize', 'mimeType', 'fileEncryption', 'replyTo', 'forwardedFrom'].filter((key) => msg[key] !== undefined).map((key) => [key, msg[key]]).concat(msg.fileURL ? [['fileURL', msg.encryptedFileURL || msg.fileURL]] : [])), actorUid: authUser.uid, targetUid: selectedUser?.uid || msg.receiverId });
     }
     if (activeThreadType === "group" && selectedGroup) {
       await editChatMessage({ threadType: "group", threadId: selectedGroup.id, messageId: msg.id, text: newText });

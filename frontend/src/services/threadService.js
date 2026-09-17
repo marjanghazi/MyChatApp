@@ -41,9 +41,10 @@ export const hydrateConversationPreviews = async (conversations, uid) => {
       const receiver = last.receiverId || last.receiver_id;
       const effectiveRecipient = sender === uid ? receiver : uid;
       const effectiveSender = sender === uid ? uid : sender;
-      const text = await tryDecryptEnvelopeWithParticipants(apiRequest, conversationId, last, effectiveRecipient, effectiveSender);
+      const text = await tryDecryptEnvelopeWithParticipants(apiRequest, conversationId, last, effectiveRecipient, effectiveSender, uid);
       if (!text) return [conversationId, conv];
-      return [conversationId, { ...conv, lastMessage: text }];
+      const content = JSON.parse(text);
+      return [conversationId, { ...conv, lastMessage: content.text || '[Encrypted message]' }];
     } catch {
       return [conversationId, conv];
     }

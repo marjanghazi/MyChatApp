@@ -2,24 +2,26 @@
  * Chat service: transport wrappers + E2EE-aware send/fetch helpers.
  *
  * Security model:
- * - Plaintext is encrypted client-side before hitting backend `/messages/send`.
+ * - Direct plaintext is encrypted client-side before hitting backend `/messages/send`.
  * - Message fetch attempts client-side decryption and only renders plaintext locally.
  */
 import { apiRequest } from "./apiClient";
-import { encryptMessageEnvelope, resetRatchetSession, runLocalE2EESelfTest, tryDecryptEnvelopeWithParticipants } from "./e2eeService";
+import { resolveEncryptedMedia } from "./mediaService";
+import { encryptMessageEnvelope, tryDecryptEnvelopeWithParticipants } from "./e2eeService";
 
 // Sends a chat message; auto-encrypts plaintext payloads into E2EE envelope when needed.
 export const sendChatMessage = async (body) => {
   const payload = body?.payload || {};
   const hasEnvelope = payload.ciphertext_b64 && payload.nonce_b64 && payload.aad_b64;
-  if (!hasEnvelope && typeof payload.text === 'string') {
+  if (body.threadType === 'direct' && !hasEnvelope) {
     const envelope = await encryptMessageEnvelope(apiRequest, {
       threadId: body.threadId,
       senderUid: body.actorUid,
-      recipientUid: body.targetUid || body.actorUid,
-      plaintext: payload.text,
+      recipientUid: body.targetUid,
+      plaintext: JSON.stringify({ ...payload, ...(body.replyTo ? { replyTo: body.replyTo } : {}) }),
     });
-    body = { ...body, payload: envelope };
+    const { replyTo, text, ...transport } = body;
+    body = { ...transport, payload: envelope };
   }
   return apiRequest('/api/chat/messages/send', {
     method: 'POST',
@@ -34,9 +36,11 @@ export const editChatMessage = async (body) => {
       threadId: nextBody.threadId,
       senderUid: nextBody.actorUid,
       recipientUid: nextBody.targetUid,
-      plaintext: nextBody.text,
+      plaintext: JSON.stringify({ ...(nextBody.content || {}), type: nextBody.content?.type || 'text', text: nextBody.text }),
     });
     nextBody.payload = envelope;
+    delete nextBody.text;
+    delete nextBody.content;
   }
   return apiRequest("/api/chat/messages/edit", {
     method: "PATCH",
@@ -62,40 +66,27 @@ export const toggleChatMessageFlag = (body) =>
     body: JSON.stringify(body),
   });
 
-const decryptionFailureStreak = new Map();
-
-// Fetches thread messages and attempts client-side decryption per message envelope.
+// History is independently decryptable. Failed authentication never resets keys or falls back.
 export const fetchThreadMessages = async (threadType, threadId, uid) => {
   const out = await apiRequest(`/api/chat/messages?threadType=${encodeURIComponent(threadType)}&threadId=${encodeURIComponent(threadId)}&uid=${encodeURIComponent(uid || '')}`);
   const next = await Promise.all((out.messages || []).map(async (m) => {
+    if (m.deletedForEveryone || !m.ciphertext_b64) return m;
     const sender = m.senderId || m.sender_id;
     const receiver = m.receiverId || m.receiver_id;
-    const effectiveRecipient = sender === uid ? receiver : uid;
-    const effectiveSender = sender === uid ? uid : sender;
-    const text = await tryDecryptEnvelopeWithParticipants(apiRequest, threadId, m, effectiveRecipient, effectiveSender);
-    if (text) {
-      const k = `${threadId}:${uid}:${sender}`;
-      decryptionFailureStreak.set(k, 0);
-      return { ...m, text };
+    const plaintext = await tryDecryptEnvelopeWithParticipants(apiRequest, threadId, m, receiver, sender, uid);
+    if (plaintext !== null) {
+      try {
+        const content = JSON.parse(plaintext);
+        // Only message content may come from the encrypted body, not server IDs/flags.
+        const allowed = ['type', 'text', 'fileURL', 'fileName', 'fileSize', 'mimeType', 'fileEncryption', 'replyTo', 'forwardedFrom', 'callType', 'callStatus', 'duration'];
+        const safe = Object.fromEntries(allowed.filter((key) => Object.hasOwn(content, key)).map((key) => [key, content[key]]));
+        try { return { ...m, ...await resolveEncryptedMedia(safe) }; }
+        catch { return { ...m, ...safe, fileURL: null, text: `${safe.text || ''} [Unable to decrypt attachment]` }; }
+      } catch { /* Invalid authenticated content is not renderable. */ }
     }
-    if (m?.ciphertext_b64 && sender && uid) {
-      const k = `${threadId}:${uid}:${sender}`;
-      const fails = (decryptionFailureStreak.get(k) || 0) + 1;
-      decryptionFailureStreak.set(k, fails);
-      if (fails >= 3) {
-        try {
-          await resetRatchetSession(apiRequest, threadId, uid, sender);
-          await runLocalE2EESelfTest(apiRequest, { threadId, aliceUid: uid, bobUid: sender });
-          decryptionFailureStreak.set(k, 0);
-        } catch {
-          // keep streak for next attempt
-        }
-      }
-    }
-    if (m?.ciphertext_b64) {
-      return { ...m, text: m.text || '[Unable to decrypt message]' };
-    }
-    return m;
+    return { ...m, type: 'e2ee', text: m.protocol_version === '2.0'
+      ? '[Unable to verify or decrypt message on this device]'
+      : '[Legacy message — insecure encryption protocol retired]' };
   }));
   return { ...out, messages: next };
 };
@@ -130,11 +121,11 @@ export const addConversationCallLog = (conversationId, callData) =>
     body: JSON.stringify({ conversationId, callData }),
   });
 
-export const addConversationMessage = (conversationId, message) =>
-  apiRequest("/api/chat/conversations/messages", {
-    method: "POST",
-    body: JSON.stringify({ conversationId, message }),
-  });
+export const addConversationMessage = (conversationId, message) => {
+  const user = JSON.parse(localStorage.getItem('pqc_auth_user') || 'null');
+  const targetUid = message.senderId === user?.uid ? message.receiverId : message.senderId;
+  return sendChatMessage({ threadType: 'direct', threadId: conversationId, actorUid: user?.uid, targetUid, payload: message });
+};
 
 export const addConversationSignal = (conversationId, signal) =>
   apiRequest("/api/chat/conversations/signals", {

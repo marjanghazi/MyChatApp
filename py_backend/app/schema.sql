@@ -137,3 +137,24 @@ CREATE TABLE IF NOT EXISTS e2ee_replay_index (
   consumed_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE(thread_id, recipient_user_id, sender_user_id, msg_counter)
 );
+
+-- Protocol v2 stores public material only. The retired v1 tables are not used.
+CREATE TABLE IF NOT EXISTS crypto_public_identities (
+  user_id TEXT NOT NULL REFERENCES users(uid),
+  suite_id TEXT NOT NULL CHECK (suite_id IN ('classical', 'pqc')),
+  device_id TEXT NOT NULL,
+  bundle JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, suite_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS messages_crypto_message_id
+ON messages ((body->>'message_id')) WHERE body->>'protocol_version' = '2.0';
+
+-- Retain identifiers even when messages are edited or deleted.
+CREATE TABLE IF NOT EXISTS crypto_message_receipts (
+  message_id UUID PRIMARY KEY,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO crypto_message_receipts(message_id)
+SELECT (body->>'message_id')::uuid FROM messages WHERE body->>'protocol_version' = '2.0'
+ON CONFLICT DO NOTHING;

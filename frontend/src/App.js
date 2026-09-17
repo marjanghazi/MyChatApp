@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createUserWithEmailAndPassword,
+  ensureEncryptionIdentity,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
@@ -38,7 +39,6 @@ import Sidebar        from "./components/Sidebar";
 import ChatWindow     from "./components/chatwindow/ChatWindow";
 
 const normalizePhone = (raw) => raw.replace(/\D/g, "");
-const conversationIdFor = (uidA, uidB) => [uidA, uidB].sort().join("_");
 
 const AUTH_ERROR_MESSAGES = {
   "auth/invalid-email": "Please enter a valid email address.",
@@ -117,6 +117,9 @@ function App() {
         return;
       }
       try {
+        // Migrates identities for sessions restored after an application update.
+        // Login already performs this call; the service de-duplicates it.
+        await ensureEncryptionIdentity(user);
         const now = Date.now();
         if (syncedProfileUids.has(user.uid)) {
           return;
@@ -137,6 +140,30 @@ function App() {
     });
     return unsubscribe;
   }, []);
+
+  // Keep the active browser's public bundles registered after backend restarts
+  // or database resets. This also completes migration for already-open tabs.
+  useEffect(() => {
+    if (!authUser?.uid || !authUser?.idToken) return undefined;
+    let active = true;
+    const register = () => ensureEncryptionIdentity(authUser, { force: true }).catch((error) => {
+      if (!active) return;
+      if (/expired|sign in|authenticated/i.test(error?.message || "")) {
+        const message = "Your session expired. Sign out and sign in again to restore encrypted messaging.";
+        setAuthError(message);
+        setStatusText(message);
+      }
+    });
+    register();
+    const timer = window.setInterval(register, 5 * 60_000);
+    const onVisible = () => { if (!document.hidden) register(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [authUser]);
 
   // ── Presence ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -360,21 +387,6 @@ function App() {
     });
     return [...visible.values()].sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
   }, [allUsers, authUser?.uid, conversations, profile?.contacts]);
-
-  const filteredUsers = useMemo(() => {
-    const v = search.trim().toLowerCase();
-    if (!v) return contacts;
-    return contacts.filter((u) =>
-      [u.displayName, u.email, u.phoneNumber]
-        .map((x) => (x || "").toLowerCase())
-        .some((f) => f.includes(v))
-    );
-  }, [contacts, search]);
-
-  const totalUnread = useMemo(
-    () => Object.values(conversations).reduce((acc, c) => acc + (c.unreadBy?.[authUser?.uid] || 0), 0),
-    [conversations, authUser]
-  );
 
   // ── Auth actions ──────────────────────────────────────────────────────────
   const submitAuth = async (event) => {

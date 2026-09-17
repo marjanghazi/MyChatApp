@@ -23,4 +23,4 @@ class JwtService:
         return jwt.encode(payload, self.secret, algorithm=self.algorithm)
 
     def decode(self, token: str) -> dict:
-        return jwt.decode(token, self.secret, algorithms=[self.algorithm])
+        return jwt.decode(token, self.secret, algorithms=[self.algorithm], options={'require_exp': True, 'require_iat': True, 'require_sub': True})

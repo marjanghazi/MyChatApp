@@ -3,7 +3,8 @@ from __future__ import annotations
 import os
 import secrets
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from app.security.request_auth import authenticated_user
 
 from app.db import q
 from app.errors import must
@@ -17,6 +18,9 @@ jwt_service = JwtService(secret=os.getenv('JWT_SECRET', 'change-me-in-env'), alg
 
 
 def _to_user(row, *, device_id: str):
+    secret = os.getenv('JWT_SECRET', '')
+    if len(secret) < 32 or secret.startswith('replace-with'):
+        raise HTTPException(status_code=503, detail='Configure a random JWT_SECRET of at least 32 characters')
     access_token = jwt_service.issue_access_token(user_id=row['uid'], device_id=device_id)
     refresh_token = secrets.token_urlsafe(32)
     return {
@@ -28,7 +32,7 @@ def _to_user(row, *, device_id: str):
         'refreshToken': refresh_token,
         'deviceId': device_id,
         'tokenType': 'Bearer',
-        'kexAlgorithm': 'x25519',
+        'supportedCryptoSuites': ['classical', 'pqc'],
     }
 
 
@@ -68,7 +72,9 @@ def login(body: dict):
 
 
 @router.post('/update-profile')
-def update_profile(body: dict):
+def update_profile(body: dict, user_id: str = Depends(authenticated_user)):
+    if body.get("uid") != user_id:
+        raise HTTPException(status_code=403, detail="Cannot update another user")
     uid = body.get('uid')
     must(uid, 'uid')
     q(

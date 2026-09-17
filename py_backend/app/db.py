@@ -49,6 +49,7 @@ def get_conn():
         raise RuntimeError('Database connection error. Check POSTGRES_* or DATABASE_URL settings.') from exc
     finally:
         if conn is not None:
+            conn.rollback()  # Clear failed/unfinished transactions before reusing the connection.
             pool.putconn(conn)
 
 
@@ -64,7 +65,8 @@ def _run_compat_migrations(conn) -> None:
             cur.execute(stmt)
 
 def init_db() -> None:
-    schema = open(os.path.join(os.path.dirname(__file__), 'schema.sql'), 'r', encoding='utf-8').read()
+    with open(os.path.join(os.path.dirname(__file__), 'schema.sql'), 'r', encoding='utf-8') as schema_file:
+        schema = schema_file.read()
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(schema)

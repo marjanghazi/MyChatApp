@@ -6,12 +6,10 @@ from dotenv import load_dotenv
 
 
 def _candidate_env_paths() -> list[Path]:
-    """Match backend/src/config/loadEnv.js precedence for Python backend.
+    """Return the Python backend's supported environment-file precedence.
 
-    Order mirrors JS backend behavior:
-    1) py_backend/.env
-    2) repository-root .env
-    3) repository-root frontend/.env
+    Backend secrets belong in ``py_backend/.env`` or the repository root.
+    The frontend file remains last for shared local-development values only.
     """
 
     base = Path(__file__).resolve()
@@ -20,7 +18,6 @@ def _candidate_env_paths() -> list[Path]:
 
     return [
         py_backend_dir / '.env',
-        repo_root / 'backend' / '.env',
         repo_root / '.env',
         repo_root / 'frontend' / '.env',
     ]

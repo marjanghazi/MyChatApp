@@ -8,7 +8,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
   const [typedText, setTypedText]           = useState('');
   const [showScrollTop, setShowScrollTop]   = useState(false);
 
-  const fullText = 'CRYSTALS-Kyber • Dilithium • AES-256-GCM • Post-Quantum';
+  const fullText = 'ML-KEM-768 • ML-DSA-65 • AES-256-GCM • Post-Quantum';
 
   /* Typing effect */
   useEffect(() => {
@@ -31,6 +31,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
   /* Active-section tracker */
   useEffect(() => {
     const sections = ['home','features','about','security','architecture','sdg','contact'];
+    if (typeof IntersectionObserver === 'undefined') return;
     const obs = new IntersectionObserver(
       entries => entries.forEach(e => { if (e.isIntersecting) setActiveSection(e.target.id); }),
       { threshold: 0.35 }
@@ -57,38 +58,38 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
   const highlights = [
     {
       title: 'NIST PQC Standards',
-      description: 'CRYSTALS-Kyber for quantum-resistant key exchange and CRYSTALS-Dilithium for digital signatures — NIST-approved and future-proof against quantum attacks.',
+      description: 'ML-KEM-768 for quantum-resistant key exchange and ML-DSA-65 for digital signatures — based on standardized post-quantum algorithms.',
       icon: '🔒',
       color: 'var(--ph-accent-a)',
     },
     {
       title: 'Quantum-Resistant Core',
-      description: 'Lattice-based cryptography that remains secure against both classical and quantum attacks, including Shor\'s algorithm and Grover\'s search.',
+      description: 'Compare a classical X25519/Ed25519 mode with an ML-KEM/ML-DSA mode in the same chat application.',
       icon: '⚛️',
       color: 'var(--ph-accent-b)',
     },
     {
-      title: 'Cross-Platform Sync',
-      description: 'Unified PQC encryption across Web (Django/FastAPI) and Mobile (Flutter) with real-time key synchronization and device attestation.',
+      title: 'Browser-held Keys',
+      description: 'Encryption identities stay in this browser. The Python backend stores public keys and relays encrypted direct messages.',
       icon: '📱',
       color: 'var(--ph-accent-c)',
     },
   ];
 
   const features = [
-    { title: 'CRYSTALS-Kyber KEM',     description: 'Module-Lattice Key Encapsulation for quantum-safe shared secret derivation. CCA-secure and NIST standardized.',                           icon: '🔑' },
-    { title: 'CRYSTALS-Dilithium',     description: 'Digital signatures from module lattices for message authentication and integrity, preventing MITM and impersonation.',                   icon: '✍️' },
-    { title: 'AES-256-GCM Encryption', description: 'Quantum-derived keys powering military-grade authenticated encryption for all messages, files, and sessions.',                           icon: '🔐' },
-    { title: 'Admin Dashboard',        description: 'Real-time PQC health metrics, anomaly detection logs, key lifecycle events, and communication node oversight.',                          icon: '📊' },
-    { title: 'Real-time Key Sync',     description: 'Seamless lattice key synchronisation between web and mobile with secure local storage, rotation policies, and device auth.',             icon: '🔄' },
-    { title: 'MITM Detection',         description: 'Signature-verification failures and auth anomalies instantly alert users to potential man-in-the-middle intrusions.',                     icon: '🛡️' },
+    { title: 'ML-KEM-768 KEM',     description: 'Module-Lattice Key Encapsulation for quantum-safe shared secret derivation. CCA-secure and NIST standardized.',                           icon: '🔑' },
+    { title: 'ML-DSA-65',     description: 'Digital signatures from module lattices for message authentication and integrity, combined with contact safety-number verification.',                   icon: '✍️' },
+    { title: 'AES-256-GCM Encryption', description: 'Random 256-bit keys encrypt direct messages and direct-chat attachments in both modes.',                           icon: '🔐' },
+    { title: 'Migration Demonstration',        description: 'Switch the configured mode and compare message algorithms, key sizes, and local benchmark timings.',                          icon: '📊' },
+    { title: 'Local Key Storage',     description: 'Browser-local identities preserve message history across reloads. Secret keys are never synchronized to the server.',             icon: '🔄' },
+    { title: 'MITM Detection',         description: 'Changed contact identities block sending until you verify and trust the new safety number.',                     icon: '🛡️' },
   ];
 
   const securityAlgorithms = [
-    { name: 'CRYSTALS-Kyber',    description: 'CCA-secure module-lattice-based KEM for quantum-safe key exchange and encapsulation/decapsulation.',          icon: '🔑', layer: 'Key Exchange Layer'    },
-    { name: 'CRYSTALS-Dilithium',description: 'Digital signatures from module lattices for authentication and message integrity verification.',                icon: '✍️', layer: 'Signature Layer'       },
+    { name: 'ML-KEM-768',    description: 'CCA-secure module-lattice-based KEM for quantum-safe key exchange and encapsulation/decapsulation.',          icon: '🔑', layer: 'Key Exchange Layer'    },
+    { name: 'ML-DSA-65',description: 'Digital signatures from module lattices for authentication and message integrity verification.',                icon: '✍️', layer: 'Signature Layer'       },
     { name: 'AES-256-GCM',       description: 'Authenticated encryption with Galois/Counter Mode for confidentiality, integrity, and authenticity.',          icon: '🔒', layer: 'Encryption Layer'      },
-    { name: 'PQC Infrastructure',description: 'Django/FastAPI backend with REST APIs, WebSockets, session management, and secure key distribution.',           icon: '⚙️', layer: 'Infrastructure Layer'  },
+    { name: 'PQC Infrastructure',description: 'FastAPI relay with authenticated public-key registration and ciphertext storage in PostgreSQL.',           icon: '⚙️', layer: 'Infrastructure Layer'  },
   ];
 
   const sdgGoals = [
@@ -98,19 +99,19 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
   ];
 
   const stats = [
-    { value: 'NIST-Approved', label: 'PQC Standards',       icon: '✅' },
+    { value: 'Standardized', label: 'PQC Standards',       icon: '✅' },
     { value: 'Kyber+Dilithium', label: 'Quantum-Resistant', icon: '⚛️' },
     { value: '256-bit',       label: 'AES Encryption',      icon: '🔐' },
-    { value: 'Web + Mobile',  label: 'Cross-Platform',      icon: '📱' },
+    { value: 'Browser Client',  label: 'Cross-Platform',      icon: '📱' },
   ];
 
   const systemModules = [
-    { name: 'User Interface Layer',   details: 'Flutter Mobile • Django/Flask Web • Real-time Chat', icon: '🖥️' },
-    { name: 'Backend API Layer',      details: 'Django/FastAPI + REST/WebSockets + Auth',             icon: '🔌' },
-    { name: 'CRYSTALS-Kyber KEM',     details: 'Key Generation • Encapsulation • Decapsulation',     icon: '🔑' },
-    { name: 'CRYSTALS-Dilithium',     details: 'Signature Generation & Verification',                icon: '✍️' },
+    { name: 'User Interface Layer',   details: 'React Browser Client • Direct Chat', icon: '🖥️' },
+    { name: 'Backend API Layer',      details: 'FastAPI + REST + Bearer Authentication',             icon: '🔌' },
+    { name: 'ML-KEM-768 KEM',     details: 'Key Generation • Encapsulation • Decapsulation',     icon: '🔑' },
+    { name: 'ML-DSA-65',     details: 'Signature Generation & Verification',                icon: '✍️' },
     { name: 'AES-256-GCM Layer',      details: 'Message Encryption • File Sharing • Integrity',      icon: '🔒' },
-    { name: 'Admin Dashboard',        details: 'PQC Metrics • Anomaly Logs • Monitoring',            icon: '📊' },
+    { name: 'Migration Demonstration',        details: 'Classical • PQC • Local Benchmarks',            icon: '📊' },
   ];
 
   return (
@@ -202,7 +203,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
 
             <div className="ph-hero-badge">
               <span className="ph-badge-dot"></span>
-              NIST PQC Standardization • CRYSTALS-Kyber • Dilithium
+              NIST PQC Standardization • ML-KEM-768 • ML-DSA-65
             </div>
 
             <h1 className="ph-hero-title">
@@ -216,10 +217,10 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
             </div>
 
             <p className="ph-hero-description">
-              QuantX integrates NIST-approved post-quantum cryptography — CRYSTALS-Kyber for quantum-resistant
-              key exchange, CRYSTALS-Dilithium for digital signatures, and AES-256-GCM for authenticated
-              encryption — delivering future-proof secure messaging across web and mobile platforms against
-              both classical and quantum adversaries.
+              QuantX demonstrates migration from classical X25519 and Ed25519 to ML-KEM-768 and ML-DSA-65,
+              while keeping AES-256-GCM and the same direct-chat experience.
+              Direct messages and their attachments are encrypted in your browser.
+              Group posts and calls are outside this encryption demonstration.
             </p>
 
             <div className="ph-hero-cta-group">
@@ -266,7 +267,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
           <div className="ph-section-header">
             <span className="ph-section-label">WHY QUANTX</span>
             <h2>Built for the Quantum Age</h2>
-            <p>NIST-approved post-quantum cryptography delivering uncompromising security today and tomorrow.</p>
+            <p>Compare classical and post-quantum algorithms in one direct-chat application.</p>
           </div>
           <div className="ph-highlight-grid">
             {highlights.map((item) => (
@@ -306,23 +307,23 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
               <span className="ph-section-label" style={{ marginBottom: '1rem', display: 'inline-block' }}>ABOUT</span>
               <h2>About QuantX</h2>
               <p className="ph-about-lead">
-                A post-quantum secure communication ecosystem integrating NIST-approved PQC algorithms.
+                An educational chat application demonstrating migration to standardized post-quantum algorithms.
               </p>
               <p>
                 Developed by <strong>M. Marjan Ghazi</strong>, <strong>M. Mudassir</strong>, and <strong>Faiq Riaz</strong> at
                 National University of Modern Languages, Islamabad, supervised by <strong>Faisal Hussain</strong>.
                 QuantX bridges theoretical post-quantum cryptography with practical daily communication,
-                implementing CRYSTALS-Kyber, CRYSTALS-Dilithium, and AES-256-GCM — all NIST-approved for
-                post-quantum security.
+                implementing ML-KEM-768, ML-DSA-65, and AES-256-GCM for the PQC mode, alongside
+                a classical X25519 and Ed25519 baseline.
               </p>
               <div className="ph-about-features">
                 {[
-                  'CRYSTALS-Kyber Key Encapsulation',
-                  'CRYSTALS-Dilithium Signatures',
+                  'ML-KEM-768 Key Encapsulation',
+                  'ML-DSA-65 Signatures',
                   'AES-256-GCM Authenticated Encryption',
-                  'MITM Attack Detection & Alerts',
-                  'Cross-Platform (Web + Mobile)',
-                  'Admin Dashboard with PQC Monitoring',
+                  'Contact Identity Verification',
+                  'React Browser Client',
+                  'Classical and PQC Comparison',
                 ].map((item, i) => (
                   <div key={i} className="ph-about-item">
                     <span className="ph-about-check">✓</span>
@@ -363,7 +364,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
             ))}
           </div>
           <div className="ph-security-note">
-            🔬 NIST PQC Standardization Project • CRYSTALS-Kyber (2023) • CRYSTALS-Dilithium (2023) • FIPS-197 AES
+            🔬 NIST PQC Standardization Project • ML-KEM-768 (2023) • ML-DSA-65 (2023) • FIPS-197 AES
           </div>
         </section>
 
@@ -372,17 +373,17 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
           <div className="ph-section-header">
             <span className="ph-section-label">SYSTEM DESIGN</span>
             <h2>System Architecture</h2>
-            <p>Integrated modules for end-to-end post-quantum secure communication.</p>
+            <p>A modular browser implementation for comparing classical and post-quantum direct messaging.</p>
           </div>
 
           <div className="ph-architecture-diagram">
             {[
-              { icon: '📱', label: 'User Interface Layer',          detail: 'Flutter Mobile App • Django/Flask Web • Real-time Chat Interface' },
-              { icon: '🔌', label: 'Backend API Layer',             detail: 'REST APIs • WebSockets • Auth • Session Management • Key Distribution' },
-              { icon: '🔑', label: 'CRYSTALS-Kyber KEM',           detail: 'Key Generation • Public/Secret Keys • Encapsulation/Decapsulation • Shared Secret' },
-              { icon: '✍️', label: 'CRYSTALS-Dilithium Signatures', detail: 'Digital Signature Generation • Signature Verification • MITM Prevention' },
+              { icon: '📱', label: 'User Interface Layer',          detail: 'React Browser App • Direct Chat Interface' },
+              { icon: '🔌', label: 'Backend API Layer',             detail: 'REST APIs • Bearer Auth • Public Identity Registry • Ciphertext Storage' },
+              { icon: '🔑', label: 'ML-KEM-768 KEM',           detail: 'Key Generation • Public/Secret Keys • Encapsulation/Decapsulation • Shared Secret' },
+              { icon: '✍️', label: 'ML-DSA-65 Signatures', detail: 'Bundle Signing • Message Signing • Contact Verification' },
               { icon: '🔒', label: 'AES-256-GCM Encryption Layer', detail: 'Message Encryption/Decryption • File Sharing • Integrity Validation' },
-              { icon: '📊', label: 'Admin Dashboard',               detail: 'PQC Health Metrics • Anomaly Logs • Key Lifecycle Events • System Monitoring' },
+              { icon: '📊', label: 'Migration Demonstration',               detail: 'Mode Selection • Message Labels • Local Benchmark Script' },
             ].map((layer, i, arr) => (
               <React.Fragment key={i}>
                 <div className="ph-arch-layer">
@@ -439,8 +440,8 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
           <div className="ph-research-grid">
             {[
               { icon: '📄', title: 'Bennett & Brassard (1984)',   body: 'Quantum cryptography: Public key distribution and coin tossing — foundational quantum key distribution protocol.' },
-              { icon: '🏛️', title: 'NIST PQC Standardization',   body: 'CRYSTALS-Kyber and CRYSTALS-Dilithium selected as NIST-approved post-quantum cryptographic standards (2023).' },
-              { icon: '🔬', title: 'Bos, Ducas, Kiltz et al.',   body: 'CRYSTALS-Kyber: A CCA-Secure Module-Lattice-Based Key Encapsulation Mechanism (2018).' },
+              { icon: '🏛️', title: 'NIST PQC Standardization',   body: 'ML-KEM and ML-DSA were standardized by NIST in FIPS 203 and FIPS 204 in August 2024.' },
+              { icon: '🔬', title: 'Bos, Ducas, Kiltz et al.',   body: 'ML-KEM-768: A CCA-Secure Module-Lattice-Based Key Encapsulation Mechanism (2018).' },
               { icon: '⚡', title: 'Mosca & Stebila (2016)',      body: 'Post-Quantum Key Exchange for the Internet and the Open Quantum Safe Project.' },
             ].map((r, i) => (
               <div key={i} className="ph-research-card">
@@ -457,8 +458,8 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
           <div className="ph-cta-content">
             <h2>Ready for Post-Quantum Secure Communication?</h2>
             <p>
-              Join the future of secure messaging with CRYSTALS-Kyber, CRYSTALS-Dilithium, and AES-256-GCM —
-              NIST-approved post-quantum cryptography built for today's threats and tomorrow's quantum adversaries.
+              Join the future of secure messaging with ML-KEM-768, ML-DSA-65, and AES-256-GCM —
+              Explore the transition from classical to post-quantum direct messaging.
             </p>
             <div className="ph-cta-buttons">
               <button className="ph-primary-btn ph-large" onClick={() => handleNavigation('register', 'register')}>
@@ -512,13 +513,13 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
               <h3>QUANTX</h3>
             </div>
             <p>
-              Post-Quantum Secure Communication integrating CRYSTALS-Kyber, CRYSTALS-Dilithium,
-              and AES-256-GCM — NIST-approved algorithms for the quantum era.
+              Post-Quantum Secure Communication integrating ML-KEM-768, ML-DSA-65,
+              and AES-256-GCM in an educational migration demonstration.
             </p>
             <div className="ph-social-links">
-              <a href="#" className="ph-social-link">GitHub</a>
-              <a href="#" className="ph-social-link">Research Paper</a>
-              <a href="#" className="ph-social-link">Docs</a>
+              <a href="https://github.com/paulmillr/noble-post-quantum" className="ph-social-link">Crypto library</a>
+              <a href="https://csrc.nist.gov/pubs/fips/203/final" className="ph-social-link">ML-KEM standard</a>
+              <a href="https://csrc.nist.gov/pubs/fips/204/final" className="ph-social-link">ML-DSA standard</a>
             </div>
           </div>
 
@@ -533,7 +534,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
 
           <div className="ph-footer-section">
             <h4>Research</h4>
-            {['CRYSTALS-Kyber','CRYSTALS-Dilithium','NIST PQC Standards','Publications'].map((item, i) => (
+            {['ML-KEM-768','ML-DSA-65','NIST PQC Standards','Publications'].map((item, i) => (
               <button key={i} className="ph-footer-link">{item}</button>
             ))}
           </div>
@@ -548,7 +549,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
 
         <div className="ph-footer-bottom">
           <p>© 2025 QuantX • Department of Computer Science, National University of Modern Languages, Islamabad</p>
-          <p className="ph-footer-status">⚛ CRYSTALS-Kyber • Dilithium • AES-256-GCM • Quantum-Secure 🔒</p>
+          <p className="ph-footer-status">⚛ ML-KEM-768 • ML-DSA-65 • AES-256-GCM • Quantum-Secure 🔒</p>
         </div>
       </footer>
 

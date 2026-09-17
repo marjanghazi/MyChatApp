@@ -2,12 +2,19 @@
   "name": "mychatapp",
   "private": true,
   "workspaces": [
-    "backend",
     "frontend"
   ],
   "scripts": {
-    "start:backend": "bash -lc 'cd py_backend && uvicorn app.main:app --host 0.0.0.0 --port 4000 --reload'",
+    "start:backend": "bash scripts/start-python-backend.sh",
     "start:frontend": "npm --prefix frontend start",
-    "dev": "bash -lc \"cd /workspace/MyChatApp && (cd py_backend && uvicorn app.main:app --host 0.0.0.0 --port 4000 --reload) & npm --prefix frontend start\""
+    "backend": "npm run start:backend",
+    "frontend": "npm run start:frontend",
+    "start:pqc": "REACT_APP_CRYPTO_SUITE=pqc npm run start:frontend",
+    "start:classical": "REACT_APP_CRYPTO_SUITE=classical npm run start:frontend",
+    "build:pqc": "REACT_APP_CRYPTO_SUITE=pqc npm --prefix frontend run build",
+    "build:classical": "REACT_APP_CRYPTO_SUITE=classical npm --prefix frontend run build",
+    "dev": "npm run dev:pqc",
+    "dev:pqc": "bash -c 'npm run start:backend & backend_pid=$!; trap \"kill $backend_pid 2>/dev/null || true\" EXIT INT TERM; npm run start:pqc'",
+    "dev:classical": "bash -c 'npm run start:backend & backend_pid=$!; trap \"kill $backend_pid 2>/dev/null || true\" EXIT INT TERM; npm run start:classical'"
   }
 }

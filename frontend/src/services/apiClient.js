@@ -1,5 +1,4 @@
 const DEFAULT_TIMEOUT_MS = 15_000;
-const LOCAL_BACKEND_ORIGIN = "http://localhost:4000";
 
 const sanitizeBaseUrl = (value) => {
   if (!value || typeof value !== "string") return "";
@@ -25,7 +24,6 @@ const joinUrl = (baseUrl, path) => {
 };
 
 const buildPrimaryUrl = (path) => joinUrl(API_BASE_URL, path);
-const buildLocalFallbackUrl = (path) => joinUrl(LOCAL_BACKEND_ORIGIN, path);
 
 const withTimeout = async (url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) => {
   const controller = new AbortController();
@@ -60,13 +58,26 @@ const requestOnce = async (url, options) => {
   }
 };
 
+const responseMessage = (body, response, path, method) => {
+  const serverMessage = body?.message || body?.detail;
+  if (serverMessage && serverMessage !== "Not Found") return serverMessage;
+
+  if (response.status === 404) {
+    return `Backend API route not found: ${method} ${normalizePath(path)}. Make sure the Python backend is running and up to date.`;
+  }
+
+  return `Request failed (${response.status}).`;
+};
+
 export const apiRequest = async (path, options = {}) => {
+  const token = JSON.parse(localStorage.getItem('pqc_auth_user') || 'null')?.idToken;
   const requestOptions = {
+    ...options,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
-    ...options,
   };
 
   let response;
@@ -75,12 +86,6 @@ export const apiRequest = async (path, options = {}) => {
     const primaryUrl = buildPrimaryUrl(path);
     response = await requestOnce(primaryUrl, requestOptions);
 
-    // If no explicit base URL is configured, a 404 can indicate the frontend host
-    // handled `/api/*` instead of backend. Retry once against local backend origin.
-    if (response.status === 404 && !API_BASE_URL) {
-      const fallbackUrl = buildLocalFallbackUrl(path);
-      response = await requestOnce(fallbackUrl, requestOptions);
-    }
   } catch (error) {
     if (error.message?.startsWith("Request timed out")) {
       throw error;
@@ -97,7 +102,8 @@ export const apiRequest = async (path, options = {}) => {
   }
 
   if (!response.ok) {
-    const message = body?.message || `Request failed (${response.status}).`;
+    const method = String(requestOptions.method || "GET").toUpperCase();
+    const message = responseMessage(body, response, path, method);
     throw new Error(message);
   }
 
