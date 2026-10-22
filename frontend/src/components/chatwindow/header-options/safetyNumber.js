@@ -2,7 +2,7 @@ import { getSafetyNumber, trustContactIdentity } from '../../../services/e2eeSer
 
 export const safetyNumberOption = async ({ selectedUser, setStatusText }) => {
   const peerUid = selectedUser?.uid;
-  if (!peerUid) return;
+  if (!peerUid) return false;
   try {
     const value = await getSafetyNumber(peerUid);
     if (!value) throw new Error('Sign in to view safety numbers');
@@ -10,6 +10,11 @@ export const safetyNumberOption = async ({ selectedUser, setStatusText }) => {
     if (verified) {
       await trustContactIdentity(peerUid, value);
       setStatusText?.('Contact identity verified for the current encryption mode.');
+      return true;
     }
-  } catch (error) { setStatusText?.(error.message); }
+    return false;
+  } catch (error) {
+    setStatusText?.(error.message);
+    return false;
+  }
 };

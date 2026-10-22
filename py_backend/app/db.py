@@ -6,10 +6,10 @@ from contextlib import contextmanager
 import psycopg2
 import psycopg2.extras
 from psycopg2 import OperationalError
-from psycopg2.pool import SimpleConnectionPool
+from psycopg2.pool import ThreadedConnectionPool
 
 
-_POOL: SimpleConnectionPool | None = None
+_POOL: ThreadedConnectionPool | None = None
 
 
 def _dsn() -> str:
@@ -24,12 +24,15 @@ def _dsn() -> str:
     return f"host={host} port={port} dbname={db} user={user} password={password}"
 
 
-def _pool() -> SimpleConnectionPool:
+def _pool() -> ThreadedConnectionPool:
     global _POOL
     if _POOL is None:
         min_conn = int(os.getenv('POSTGRES_POOL_MIN', '1'))
         max_conn = int(os.getenv('POSTGRES_POOL_MAX', '12'))
-        _POOL = SimpleConnectionPool(min_conn, max_conn, dsn=_dsn())
+        # FastAPI runs synchronous route handlers in a worker thread pool.
+        # SimpleConnectionPool is not thread-safe and can stall or hand the
+        # same PostgreSQL connection to concurrent polling/send requests.
+        _POOL = ThreadedConnectionPool(min_conn, max_conn, dsn=_dsn())
     return _POOL
 
 

@@ -51,6 +51,11 @@ def _normalize_message_row(row: dict) -> dict:
     """Normalize DB row shape to frontend message contract fields."""
     msg = dict(row or {})
     body = msg.pop('body', None)
+    # Preserve server-owned routing metadata separately before merging the
+    # encrypted envelope. Protocol v2 also has an authenticated ``thread_id``;
+    # dropping it makes every client-side context verification fail.
+    server_thread_type = msg.pop('thread_type', None)
+    server_thread_id = msg.pop('thread_id', None)
     if isinstance(body, dict):
         for key, value in body.items():
             if key not in msg:
@@ -61,8 +66,8 @@ def _normalize_message_row(row: dict) -> dict:
     msg['senderId'] = msg.pop('sender_id', None)
     msg['receiverId'] = msg.pop('receiver_id', None)
     msg['senderName'] = msg.pop('sender_name', None)
-    msg['threadType'] = msg.pop('thread_type', None)
-    msg['threadId'] = msg.pop('thread_id', None)
+    msg['threadType'] = server_thread_type
+    msg['threadId'] = server_thread_id
     msg['deliveredTo'] = msg.pop('delivered_to', []) or []
     msg['readBy'] = msg.pop('read_by', []) or []
     msg['deletedFor'] = msg.pop('deleted_for', []) or []

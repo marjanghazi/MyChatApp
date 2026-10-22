@@ -1,10 +1,10 @@
 import { apiRequest } from './apiClient';
-import { encryptMessageEnvelope, tryDecryptEnvelopeWithParticipants } from './e2eeService';
+import { decryptEnvelopeWithParticipants, encryptMessageEnvelope } from './e2eeService';
 import { resolveEncryptedMedia } from './mediaService';
 import { sendChatMessage, editChatMessage, fetchThreadMessages } from './chatService';
 
 jest.mock('./apiClient', () => ({ apiRequest: jest.fn() }));
-jest.mock('./e2eeService', () => ({ encryptMessageEnvelope: jest.fn(), tryDecryptEnvelopeWithParticipants: jest.fn() }));
+jest.mock('./e2eeService', () => ({ encryptMessageEnvelope: jest.fn(), decryptEnvelopeWithParticipants: jest.fn() }));
 jest.mock('./mediaService', () => ({ resolveEncryptedMedia: jest.fn() }));
 const envelope = { ciphertext_b64: 'cipher', nonce_b64: 'nonce', aad_b64: 'aad', protocol_version: '2.0' };
 beforeEach(() => {
@@ -42,15 +42,15 @@ test('community posts stay outside direct encryption', async () => {
 
 test('history uses the logged-in viewer and cannot replace server identifiers', async () => {
   apiRequest.mockResolvedValue({ messages: [{ ...envelope, id: 'real-id', senderId: 'a', receiverId: 'b' }] });
-  tryDecryptEnvelopeWithParticipants.mockResolvedValue(JSON.stringify({ text: 'secret', id: 'fake-id', senderId: 'mallory', type: 'text' }));
+  decryptEnvelopeWithParticipants.mockResolvedValue(JSON.stringify({ text: 'secret', id: 'fake-id', senderId: 'mallory', type: 'text' }));
   const result = await fetchThreadMessages('direct', 'a_b', 'a');
-  expect(tryDecryptEnvelopeWithParticipants.mock.calls[0].slice(3)).toEqual(['b', 'a', 'a']);
+  expect(decryptEnvelopeWithParticipants.mock.calls[0].slice(3)).toEqual(['b', 'a', 'a']);
   expect(result.messages[0]).toMatchObject({ id: 'real-id', senderId: 'a', text: 'secret' });
 });
 
 test('failed authentication does not display plaintext fallback or reset identities', async () => {
   apiRequest.mockResolvedValue({ messages: [{ ...envelope, id: 'id', senderId: 'a', receiverId: 'b', text: 'untrusted fallback' }] });
-  tryDecryptEnvelopeWithParticipants.mockResolvedValue(null);
+  decryptEnvelopeWithParticipants.mockResolvedValue(null);
   const result = await fetchThreadMessages('direct', 'a_b', 'b');
   expect(result.messages[0].text).toBe('[Unable to verify or decrypt message on this device]');
   expect(apiRequest).toHaveBeenCalledTimes(1);

@@ -7,6 +7,8 @@
 import { apiRequest } from "./apiClient";
 import { tryDecryptEnvelopeWithParticipants } from "./e2eeService";
 
+const previewCache = new Map();
+
 export const fetchUsers = async (excludeUid) =>
   apiRequest(`/api/thread/users?excludeUid=${encodeURIComponent(excludeUid)}`);
 
@@ -32,6 +34,8 @@ export const hydrateConversationPreviews = async (conversations, uid) => {
     const lastMessage = String(conv?.lastMessage || '');
     const needsHydration = ['[E2EE message]', '[Unable to decrypt message]'].includes(lastMessage) || !lastMessage.trim();
     if (!needsHydration) return [conversationId, conv];
+    const cacheKey = `${conversationId}:${conv?.lastMessageAt || ''}:${conv?.lastMessageSender || ''}`;
+    if (previewCache.has(cacheKey)) return [conversationId, { ...conv, lastMessage: previewCache.get(cacheKey) }];
     try {
       const out = await apiRequest(`/api/chat/messages?threadType=direct&threadId=${encodeURIComponent(conversationId)}&uid=${encodeURIComponent(uid || '')}`);
       const msgs = out.messages || [];
@@ -44,7 +48,10 @@ export const hydrateConversationPreviews = async (conversations, uid) => {
       const text = await tryDecryptEnvelopeWithParticipants(apiRequest, conversationId, last, effectiveRecipient, effectiveSender, uid);
       if (!text) return [conversationId, conv];
       const content = JSON.parse(text);
-      return [conversationId, { ...conv, lastMessage: content.text || '[Encrypted message]' }];
+      const preview = content.text || '[Encrypted message]';
+      if (previewCache.size >= 500) previewCache.delete(previewCache.keys().next().value);
+      previewCache.set(cacheKey, preview);
+      return [conversationId, { ...conv, lastMessage: preview }];
     } catch {
       return [conversationId, conv];
     }

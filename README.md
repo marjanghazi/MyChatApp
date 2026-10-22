@@ -23,6 +23,23 @@ The project includes two working cryptographic suites for direct messages:
 
 Both suites use the same message protocol and application integration. After the one-time architectural preparation already implemented in this repository, changing a frontend configuration value selects the suite for new outgoing messages.
 
+### Classical and PQC tradeoffs
+
+| Area | Classical (`X25519` + `Ed25519`) | Post-quantum (`ML-KEM-768` + `ML-DSA-65`) |
+| --- | --- | --- |
+| Main advantage | Small keys, signatures, and messages; fast on browsers and slower networks | Designed to resist known attacks from future cryptographically relevant quantum computers |
+| Main drawback | A sufficiently capable future quantum computer could break captured key-establishment/signature traffic | Much larger public keys, ciphertexts, and signatures; higher CPU, memory, bandwidth, and storage use |
+| Typical public keys | 32-byte encryption and signing public keys | 1,184-byte ML-KEM and 1,952-byte ML-DSA public keys |
+| Signature size | 64 bytes | 3,309 bytes |
+| Example envelope | About 3.4 KB | About 34 KB |
+| User experience | Faster sends, history loading, and synchronization | Sends and initial decryption can be noticeably slower, especially through ngrok or mobile networks |
+| Best use | Compatibility, constrained devices, and performance-focused demonstrations | Demonstrating post-quantum readiness and protection against harvest-now/decrypt-later risks |
+
+AES-256-GCM and HKDF-SHA256 are shared by both modes. Selecting PQC changes key
+establishment and signatures; it does not mean AES is replaced. Performance also
+depends on browser hardware, database latency, tunnel latency, attachment size,
+and the number of conversations being synchronized.
+
 > **Project scope:** QuantX is an educational implementation of a classical-to-PQC migration. Direct messages and direct-chat attachments use browser-side end-to-end encryption. Group/channel posts, call media, signaling, and call logs are outside that E2EE implementation. The application is not an audited production messenger or a FIPS-validated product.
 
 ## Features
@@ -461,10 +478,46 @@ These boundaries are part of the project explanation and should remain visible w
 | Backend asks for `JWT_SECRET` | Replace the example placeholder with a random secret of at least 32 characters. |
 | Session expired | Sign in again to obtain a fresh access token. |
 | Contact has no compatible identity | Ask the contact to sign in with the updated frontend against the Python backend. |
-| A contact's identity changed | Compare safety numbers through a trusted channel and explicitly trust the verified replacement. |
+| A contact's identity changed | Send again: the app opens safety-number verification and retries automatically after both users compare and approve the number. The same action is also available from the chat menu under **Safety number**. Never approve an unmatched number. |
 | Mode still shows Classical | Restart/rebuild the frontend after changing `.env`; also check for a `REACT_APP_CRYPTO_SUITE` override in `.env.local` or the process environment. |
 | Old messages cannot decrypt | Check that you are using the original browser profile. Retired v1 messages and messages for another device are not recoverable through the new protocol. |
 | Browser crypto or microphone access fails | Use localhost or HTTPS and verify browser algorithm support and permissions. |
+
+## Test from another machine with ngrok
+
+The project uses one HTTPS tunnel to the React server on port 3000. React proxies
+same-origin `/api` requests to the Python backend on port 4000, so encryption-key
+registration, messaging, and media requests use the same public origin.
+
+1. Create an ngrok account and configure its authtoken once:
+
+   ```bash
+   scripts/bin/ngrok config add-authtoken YOUR_NGROK_AUTHTOKEN
+   ```
+
+2. Copy your stable HTTPS domain from the ngrok dashboard and export it in the
+tunnel terminal. Reuse this exact domain every time; changing origins creates a
+different browser key store.
+
+   ```bash
+   export NGROK_URL=https://your-static-domain.ngrok-free.app
+   ```
+
+3. Start PostgreSQL, then run these commands in three terminals:
+
+   ```bash
+   npm run backend
+   npm run start:pqc       # or: npm run start:classical
+   npm run tunnel
+   ```
+
+4. Open `NGROK_URL` on both machines. Sign in with different accounts in separate
+browser profiles. Both clients must use the same URL and crypto mode. Do not use
+the same account on multiple browsers, and do not alternate between localhost and
+ngrok. Keep all three terminal processes running.
+
+`npm run tunnel` checks the backend, database, frontend, and ngrok authentication
+before exposing the application. Never tunnel PostgreSQL port 5432.
 
 ## Project team
 

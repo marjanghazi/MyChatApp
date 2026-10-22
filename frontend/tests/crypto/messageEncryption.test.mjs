@@ -70,7 +70,8 @@ for (const suiteId of ['classical', 'pqc']) {
   });
   test(`${suiteId}: explicit safety-number verification trusts only the compared replacement`, async () => {
     const f = await setup();
-    await f.alice.encrypt(message(suiteId));
+    const oldReply = await f.bob.encrypt({ ...message(suiteId, 'before rotation'), senderUid: 'bob', recipientUid: 'alice' });
+    assert.equal(await f.alice.decrypt({ ...received(oldReply, 'alice'), senderUid: 'bob', recipientUid: 'alice' }), 'before rotation');
     const replacement = createMessageEncryption({ store: memoryStore(), apiRequest: f.apiRequest });
     await replacement.register('bob');
     await assert.rejects(() => f.alice.trustContact('alice', 'bob', suiteId, 'wrong number'));
@@ -79,6 +80,11 @@ for (const suiteId of ['classical', 'pqc']) {
     await f.alice.trustContact('alice', 'bob', suiteId, verified);
     const envelope = await f.alice.encrypt(message(suiteId));
     assert.equal(await replacement.decrypt(received(envelope)), message(suiteId).plaintext);
+    assert.equal(
+      await f.alice.decrypt({ ...received(oldReply, 'alice'), senderUid: 'bob', recipientUid: 'alice' }),
+      'before rotation',
+      'Verified rotation must preserve already trusted history',
+    );
   });
   test(`${suiteId}: safety number is identical on both participants`, async () => {
     const f = await setup();

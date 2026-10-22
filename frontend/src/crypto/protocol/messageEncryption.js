@@ -75,9 +75,15 @@ export function createMessageEncryption({ store, apiRequest }) {
     const key = pinSlot(owner, bundle.user_id, bundle.suite_id);
     const current = await fingerprint(unsignedBundle(bundle));
     await lock(key, async () => {
-      const previous = await store.get(key);
-      if (previous && previous !== current) throw new Error('Contact encryption identity changed. Verify their safety number before trusting the new identity.');
-      if (commit && !previous) await store.set(key, current);
+      const stored = await store.get(key);
+      // Version 2 originally stored one fingerprint. Preserve it while moving
+      // to a list so a verified key rotation does not make authentic history
+      // look tampered with.
+      const trusted = Array.isArray(stored) ? stored : (stored ? [stored] : []);
+      if (trusted.length && !trusted.includes(current)) {
+        throw new Error('Contact encryption identity changed. Open the chat menu, choose Safety number, compare it on both devices, then choose OK.');
+      }
+      if (commit && !trusted.includes(current)) await store.set(key, [...trusted, current]);
     });
     return current;
   }
@@ -142,12 +148,17 @@ export function createMessageEncryption({ store, apiRequest }) {
   async function decrypt({ threadId, payload, userId, senderUid, recipientUid }) {
     if (payload.protocol_version !== VERSION) throw new Error('Legacy message uses an insecure retired protocol');
     const suite = getSuite(payload.suite_id);
-    if (payload.thread_id !== threadId || payload.sender_user_id !== senderUid || payload.recipient_user_id !== recipientUid
-      || ![senderUid, recipientUid].includes(userId) || payload.kex_algorithm !== suite.kex
-      || payload.signature_algorithm !== suite.signature || payload.kdf_algorithm !== 'hkdf-sha256'
-      || payload.cipher !== 'aes-256-gcm' || payload.session_id !== payload.message_id) {
-      throw new Error('Encrypted message context mismatch');
-    }
+    const mismatches = [];
+    if (payload.thread_id !== threadId) mismatches.push('thread');
+    if (payload.sender_user_id !== senderUid) mismatches.push('sender');
+    if (payload.recipient_user_id !== recipientUid) mismatches.push('recipient');
+    if (![senderUid, recipientUid].includes(userId)) mismatches.push('viewer');
+    if (payload.kex_algorithm !== suite.kex) mismatches.push('key-exchange algorithm');
+    if (payload.signature_algorithm !== suite.signature) mismatches.push('signature algorithm');
+    if (payload.kdf_algorithm !== 'hkdf-sha256') mismatches.push('KDF');
+    if (payload.cipher !== 'aes-256-gcm') mismatches.push('cipher');
+    if (payload.session_id !== payload.message_id) mismatches.push('message identifier');
+    if (mismatches.length) throw new Error(`Encrypted message context mismatch (${mismatches.join(', ')})`);
     const senderBundle = payload.sender_bundle;
     await validateBundle(senderBundle, senderUid, suite.id);
     if (senderBundle.device_id !== payload.sender_device_id) throw new Error('Sender device mismatch');
@@ -192,7 +203,11 @@ export function createMessageEncryption({ store, apiRequest }) {
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', utf8(canonical(fingerprints.sort()))));
     const number = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('').match(/.{1,4}/g).join(' ');
     if (number !== verifiedNumber) throw new Error('Identity changed during verification. Compare safety numbers again.');
-    await store.set(pinSlot(userId, peerId, suiteId), await fingerprint(unsignedBundle(peer)));
+    const key = pinSlot(userId, peerId, suiteId);
+    const stored = await store.get(key);
+    const trusted = Array.isArray(stored) ? stored : (stored ? [stored] : []);
+    const current = await fingerprint(unsignedBundle(peer));
+    if (!trusted.includes(current)) await store.set(key, [...trusted, current]);
   }
   return { register, encrypt, decrypt, safetyNumber, trustContact };
 }

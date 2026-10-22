@@ -7,7 +7,7 @@
  */
 import { apiRequest } from "./apiClient";
 import { resolveEncryptedMedia } from "./mediaService";
-import { encryptMessageEnvelope, tryDecryptEnvelopeWithParticipants } from "./e2eeService";
+import { decryptEnvelopeWithParticipants, encryptMessageEnvelope } from "./e2eeService";
 
 // Sends a chat message; auto-encrypts plaintext payloads into E2EE envelope when needed.
 export const sendChatMessage = async (body) => {
@@ -26,6 +26,9 @@ export const sendChatMessage = async (body) => {
   return apiRequest('/api/chat/messages/send', {
     method: 'POST',
     body: JSON.stringify(body),
+    // PQC envelopes are roughly ten times larger than classical envelopes.
+    // Allow slow ngrok/mobile uploads without extending every polling request.
+    timeoutMs: 45_000,
   });
 };
 
@@ -73,7 +76,14 @@ export const fetchThreadMessages = async (threadType, threadId, uid) => {
     if (m.deletedForEveryone || !m.ciphertext_b64) return m;
     const sender = m.senderId || m.sender_id;
     const receiver = m.receiverId || m.receiver_id;
-    const plaintext = await tryDecryptEnvelopeWithParticipants(apiRequest, threadId, m, receiver, sender, uid);
+    let plaintext;
+    try {
+      plaintext = await decryptEnvelopeWithParticipants(apiRequest, threadId, m, receiver, sender, uid);
+    } catch (error) {
+      const reason = error?.message || 'Unknown cryptographic error';
+      console.error('Message decryption failed', { messageId: m.id, reason });
+      return { ...m, type: 'e2ee', text: `[Unable to verify or decrypt: ${reason}]` };
+    }
     if (plaintext !== null) {
       try {
         const content = JSON.parse(plaintext);

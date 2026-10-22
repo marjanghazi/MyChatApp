@@ -849,6 +849,18 @@ const ChatWindow = ({
 
       if (forwardedFrom) payload.forwardedFrom = forwardedFrom;
       const replyPayload = replyTo ? { id: replyTo.id, text: replyTo.text, senderId: replyTo.senderId } : null;
+      const directSendBody = {
+        threadType: "direct",
+        threadId: selectedConversationId,
+        actorUid: authUser.uid,
+        actorName: profile.displayName,
+        actorPhone: profile.phoneNumber || "",
+        targetUid: selectedUser.uid,
+        targetPhone: selectedUser.phoneNumber || "",
+        isTargetOnline: Boolean(selectedUser?.isOnline),
+        payload,
+        replyTo: replyPayload,
+      };
 
       let optimisticId = null;
       try {
@@ -860,18 +872,17 @@ const ChatWindow = ({
           threadType: "direct",
           targetOnline: Boolean(selectedUser?.isOnline),
         });
-        await sendChatMessage({
-          threadType: "direct",
-          threadId: selectedConversationId,
-          actorUid: authUser.uid,
-          actorName: profile.displayName,
-          actorPhone: profile.phoneNumber || "",
-          targetUid: selectedUser.uid,
-          targetPhone: selectedUser.phoneNumber || "",
-          isTargetOnline: Boolean(selectedUser?.isOnline),
-          payload,
-          replyTo: replyPayload,
-        });
+        try {
+          await sendChatMessage(directSendBody);
+        } catch (error) {
+          if (!/Contact encryption identity changed/i.test(error?.message || "")) throw error;
+          // Key rotation is recoverable, but must never be accepted silently.
+          // Put verification directly in the send flow and retry only after the
+          // user compares and approves the current safety number.
+          const trusted = await headerOptionsHandlers.safetyNumber({ selectedUser, setStatusText });
+          if (!trusted) throw new Error("Contact identity verification was cancelled. Message was not sent.");
+          await sendChatMessage(directSendBody);
+        }
         setReplyTo(null);
         setReplyTargetUser(null);
         updateTypingState(false);

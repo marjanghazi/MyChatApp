@@ -13,6 +13,7 @@
     "start:classical": "REACT_APP_CRYPTO_SUITE=classical npm run start:frontend",
     "build:pqc": "REACT_APP_CRYPTO_SUITE=pqc npm --prefix frontend run build",
     "build:classical": "REACT_APP_CRYPTO_SUITE=classical npm --prefix frontend run build",
+    "tunnel": "bash scripts/start-ngrok.sh",
     "dev": "npm run dev:pqc",
     "dev:pqc": "bash -c 'npm run start:backend & backend_pid=$!; trap \"kill $backend_pid 2>/dev/null || true\" EXIT INT TERM; npm run start:pqc'",
     "dev:classical": "bash -c 'npm run start:backend & backend_pid=$!; trap \"kill $backend_pid 2>/dev/null || true\" EXIT INT TERM; npm run start:classical'"

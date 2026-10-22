@@ -146,7 +146,8 @@ function App() {
   useEffect(() => {
     if (!authUser?.uid || !authUser?.idToken) return undefined;
     let active = true;
-    const register = () => ensureEncryptionIdentity(authUser, { force: true }).catch((error) => {
+    let lastForcedRegistration = Date.now();
+    const register = (force = false) => ensureEncryptionIdentity(authUser, { force }).catch((error) => {
       if (!active) return;
       if (/expired|sign in|authenticated/i.test(error?.message || "")) {
         const message = "Your session expired. Sign out and sign in again to restore encrypted messaging.";
@@ -154,9 +155,19 @@ function App() {
         setStatusText(message);
       }
     });
-    register();
-    const timer = window.setInterval(register, 5 * 60_000);
-    const onVisible = () => { if (!document.hidden) register(); };
+    // Login/session restoration has already registered this identity. Reuse the
+    // cached result at startup and only perform a network refresh periodically.
+    register(false);
+    const refreshRegistration = () => {
+      lastForcedRegistration = Date.now();
+      register(true);
+    };
+    const timer = window.setInterval(refreshRegistration, 5 * 60_000);
+    const onVisible = () => {
+      if (!document.hidden && Date.now() - lastForcedRegistration >= 5 * 60_000) {
+        refreshRegistration();
+      }
+    };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       active = false;

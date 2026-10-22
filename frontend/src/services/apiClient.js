@@ -47,12 +47,12 @@ const backendHint = () => {
   return "Unable to reach backend API. Start backend (port 4000) and use frontend dev proxy or set REACT_APP_API_BASE_URL.";
 };
 
-const requestOnce = async (url, options) => {
+const requestOnce = async (url, options, timeoutMs = DEFAULT_TIMEOUT_MS) => {
   try {
-    return await withTimeout(url, options);
+    return await withTimeout(url, options, timeoutMs);
   } catch (error) {
     if (error?.name === "AbortError") {
-      throw new Error(`Request timed out after ${DEFAULT_TIMEOUT_MS / 1000}s.`);
+      throw new Error(`Request timed out after ${timeoutMs / 1000}s.`);
     }
     throw error;
   }
@@ -70,13 +70,14 @@ const responseMessage = (body, response, path, method) => {
 };
 
 export const apiRequest = async (path, options = {}) => {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...fetchOptions } = options;
   const token = JSON.parse(localStorage.getItem('pqc_auth_user') || 'null')?.idToken;
   const requestOptions = {
-    ...options,
+    ...fetchOptions,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
+      ...(fetchOptions.headers || {}),
     },
   };
 
@@ -84,7 +85,7 @@ export const apiRequest = async (path, options = {}) => {
 
   try {
     const primaryUrl = buildPrimaryUrl(path);
-    response = await requestOnce(primaryUrl, requestOptions);
+    response = await requestOnce(primaryUrl, requestOptions, timeoutMs);
 
   } catch (error) {
     if (error.message?.startsWith("Request timed out")) {

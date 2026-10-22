@@ -11,15 +11,21 @@ function engine(apiRequest) {
 }
 export const registerDeviceBundle = (apiRequest, userId) => engine(apiRequest).register(userId);
 export async function encryptMessageEnvelope(apiRequest, options) {
-  await registerDeviceBundle(apiRequest, options.senderUid);
+  // Authentication/session startup registers both public bundles. Re-uploading
+  // the large PQC bundle before every message adds a full network round trip and
+  // tens of kilobytes without changing the browser-held identity.
   return engine(apiRequest).encrypt({ ...options, suiteId: configuredSuite().id });
 }
 export const decryptMessageEnvelope = (apiRequest, options) => engine(apiRequest).decrypt(options);
+export async function decryptEnvelopeWithParticipants(apiRequest, threadId, payload, recipientUid, senderUid, viewerUid) {
+  if (!payload?.ciphertext_b64) return null;
+  const userId = viewerUid || JSON.parse(localStorage.getItem('pqc_auth_user') || 'null')?.uid;
+  return decryptMessageEnvelope(apiRequest, { threadId, payload, userId, senderUid, recipientUid });
+}
 export async function tryDecryptEnvelopeWithParticipants(apiRequest, threadId, payload, recipientUid, senderUid, viewerUid) {
   if (!payload?.ciphertext_b64) return null;
   try {
-    const userId = viewerUid || JSON.parse(localStorage.getItem('pqc_auth_user') || 'null')?.uid;
-    return await decryptMessageEnvelope(apiRequest, { threadId, payload, userId, senderUid, recipientUid });
+    return await decryptEnvelopeWithParticipants(apiRequest, threadId, payload, recipientUid, senderUid, viewerUid);
   } catch { return null; }
 }
 export async function getSafetyNumber(peerUid) {

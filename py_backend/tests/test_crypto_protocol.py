@@ -70,6 +70,25 @@ class CryptoProtocolTests(unittest.TestCase):
             self.assertEqual(EncryptedEnvelope.model_validate(envelope).model_dump(), envelope)
             self.assertEqual(self.send(envelope).status_code, 200)
 
+    def test_message_normalization_preserves_authenticated_thread_id(self):
+        row = {
+            **self.row,
+            'thread_id': 'alice_bob',
+            'thread_type': 'direct',
+            'body': self.envelope,
+            'created_at': None,
+            'edited_at': None,
+            'deleted_at': None,
+            'delivered_to': [],
+            'read_by': [],
+            'deleted_for': [],
+            'deleted_for_everyone': False,
+            'sender_name': 'Alice',
+        }
+        normalized = chat._normalize_message_row(row)
+        self.assertEqual(normalized['threadId'], 'alice_bob')
+        self.assertEqual(normalized['thread_id'], self.envelope['thread_id'])
+
     def test_authentication_and_sender_binding(self):
         self.assertEqual(self.client.post('/api/chat/messages/send', json={}).status_code, 401)
         self.assertEqual(self.send(actorUid='bob').status_code, 403)
