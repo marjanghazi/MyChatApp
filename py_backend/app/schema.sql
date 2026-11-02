@@ -16,6 +16,61 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+-- Existing Pakistan numbers are normalized before enforcing uniqueness.
+UPDATE users SET phone_number = regexp_replace(phone_number, '[^0-9]', '', 'g')
+WHERE phone_number <> '' AND phone_number !~ '^[0-9]+$';
+UPDATE users SET phone_number = substring(phone_number FROM 3)
+WHERE phone_number LIKE '00%';
+UPDATE users SET phone_number = '92' || substring(phone_number FROM 2)
+WHERE phone_number ~ '^03[0-9]{9}$';
+UPDATE users SET phone_number = '92' || phone_number
+WHERE phone_number ~ '^3[0-9]{9}$';
+UPDATE users SET phone_lookup_keys = ARRAY[phone_number, '0' || substring(phone_number FROM 3), substring(phone_number FROM 3)]
+WHERE phone_number ~ '^923[0-9]{9}$';
+UPDATE users SET phone_lookup_keys = ARRAY[phone_number]
+WHERE phone_number <> '' AND (phone_lookup_keys IS NULL OR cardinality(phone_lookup_keys)=0);
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users (lower(email));
+CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique ON users (phone_number) WHERE phone_number <> '';
+
+-- Authentication audit metadata contains no passwords, hashes, or tokens.
+CREATE TABLE IF NOT EXISTS auth_events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  account_id TEXT NOT NULL,
+  event_type TEXT NOT NULL CHECK (event_type IN ('register', 'login', 'admin_login')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS auth_events_created_at_idx ON auth_events (created_at DESC);
+
+-- Short admin demonstrations record only stage names and status from the user's browser.
+-- No key bytes, passwords, tokens, message IDs, or message content are accepted.
+CREATE TABLE IF NOT EXISTS crypto_demo_sessions (
+  user_id TEXT PRIMARY KEY REFERENCES users(uid) ON DELETE CASCADE,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  active_until TIMESTAMPTZ NOT NULL
+);
+ALTER TABLE crypto_demo_sessions ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NOT NULL DEFAULT now();
+-- One short capture window can include the next account created during a demo.
+CREATE TABLE IF NOT EXISTS crypto_demo_registration_capture (
+  id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
+  started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  active_until TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE IF NOT EXISTS crypto_demo_events (
+  id BIGSERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+  flow_id UUID NOT NULL,
+  kind TEXT NOT NULL,
+  step TEXT,
+  status TEXT NOT NULL,
+  detail TEXT,
+  sequence SMALLINT NOT NULL,
+  duration_ms DOUBLE PRECISION,
+  metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE crypto_demo_events ADD COLUMN IF NOT EXISTS duration_ms DOUBLE PRECISION;
+ALTER TABLE crypto_demo_events ADD COLUMN IF NOT EXISTS metrics JSONB NOT NULL DEFAULT '{}'::jsonb;
+CREATE INDEX IF NOT EXISTS crypto_demo_events_user_id_idx ON crypto_demo_events (user_id, id DESC);
 CREATE TABLE IF NOT EXISTS groups (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
@@ -141,7 +196,9 @@ CREATE TABLE IF NOT EXISTS e2ee_replay_index (
 -- Protocol v2 stores public material only. The retired v1 tables are not used.
 CREATE TABLE IF NOT EXISTS crypto_public_identities (
   user_id TEXT NOT NULL REFERENCES users(uid),
-  suite_id TEXT NOT NULL CHECK (suite_id IN ('classical', 'pqc')),
+  -- Historical classical rows in existing databases are preserved; the API accepts PQC only.
+  -- suite_id TEXT NOT NULL CHECK (suite_id IN ('classical', 'pqc')),
+  suite_id TEXT NOT NULL CHECK (suite_id = 'pqc'),
   device_id TEXT NOT NULL,
   bundle JSONB NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -149,6 +206,9 @@ CREATE TABLE IF NOT EXISTS crypto_public_identities (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS messages_crypto_message_id
 ON messages ((body->>'message_id')) WHERE body->>'protocol_version' = '2.0';
+CREATE INDEX IF NOT EXISTS messages_pqc_created_at_idx
+ON messages (created_at DESC, id DESC)
+WHERE thread_type='direct' AND body->>'suite_id'='pqc' AND body->>'protocol_version'='2.0';
 
 -- Retain identifiers even when messages are edited or deleted.
 CREATE TABLE IF NOT EXISTS crypto_message_receipts (

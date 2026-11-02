@@ -24,3 +24,10 @@ Thumbs.db
 .vscode/
 .idea/
 scripts/bin/
+
+# Python and local runtime data
+.venv*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+py_backend/local_media/

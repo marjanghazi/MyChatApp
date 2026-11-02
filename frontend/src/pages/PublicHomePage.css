@@ -1748,7 +1748,7 @@
   margin: 0 auto;
   padding: 3.5rem 2rem;
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr;
+  grid-template-columns: 2fr 1fr 1fr;
   gap: 2.5rem;
 }
 
@@ -1803,6 +1803,7 @@
 
 .ph-footer-link {
   display: block;
+  text-decoration: none;
   background: none;
   border: none;
   color: var(--ph-text-secondary);
@@ -1938,6 +1939,12 @@
 /* ─────────────────────────────────────────────
    RESPONSIVE — perfect margins and spacing
    ───────────────────────────────────────────── */
+@media (max-width: 1180px) {
+  .ph-nav-links { display: none; }
+  .ph-mobile-menu-btn { display: block; }
+  .ph-mobile-nav { display: flex; }
+}
+
 @media (max-width: 1100px) {
   .ph-hero-section { 
     grid-template-columns: 1fr; 
@@ -2356,3 +2363,7 @@
     padding-right: 0.9rem;
   }
 }
+
+.ph-admin-link { display: inline-flex; align-items: center; text-decoration: none; }
+.ph-mobile-nav a.ph-mobile-nav-link { text-decoration: none; }
+@media (max-width: 768px) { .ph-admin-link { display: none; } }

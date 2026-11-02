@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.db import q
 from app.errors import must
+from app.security.request_auth import authenticated_user
 
 router = APIRouter(prefix='/api/thread', tags=['thread'])
 
@@ -58,9 +59,23 @@ def _to_conversation_payload(row: dict) -> dict:
     }
 
 @router.get('/users')
-def users(excludeUid: str | None = None):
-    rows = q('SELECT * FROM users', fetch='all') or []
-    return {'users': [_to_user_payload(r) for r in rows if r['uid'] != excludeUid]}
+def users(user_id: str = Depends(authenticated_user)):
+    rows = q(
+        '''SELECT u.* FROM users u
+           WHERE u.uid <> %s AND (
+             EXISTS (
+               SELECT 1 FROM unnest(COALESCE(u.phone_lookup_keys, '{}'::text[])) AS lookup(key)
+               WHERE lookup.key = ANY(COALESCE((SELECT contacts FROM users WHERE uid=%s), '{}'::text[]))
+             )
+             OR EXISTS (
+               SELECT 1 FROM conversations c
+               WHERE %s = ANY(c.participants) AND u.uid = ANY(c.participants)
+             )
+           )''',
+        (user_id, user_id, user_id),
+        fetch='all',
+    ) or []
+    return {'users': [_to_user_payload(row) for row in rows]}
 
 
 @router.get('/conversations')

@@ -8,47 +8,75 @@
 import { apiRequest } from "./apiClient";
 import { resolveEncryptedMedia } from "./mediaService";
 import { decryptEnvelopeWithParticipants, encryptMessageEnvelope } from "./e2eeService";
+import { beginPqcActivity } from "../crypto/pqcActivity.js";
+
+const seenMessagesByThread = new Map();
 
 // Sends a chat message; auto-encrypts plaintext payloads into E2EE envelope when needed.
 export const sendChatMessage = async (body) => {
   const payload = body?.payload || {};
   const hasEnvelope = payload.ciphertext_b64 && payload.nonce_b64 && payload.aad_b64;
-  if (body.threadType === 'direct' && !hasEnvelope) {
-    const envelope = await encryptMessageEnvelope(apiRequest, {
-      threadId: body.threadId,
-      senderUid: body.actorUid,
-      recipientUid: body.targetUid,
-      plaintext: JSON.stringify({ ...payload, ...(body.replyTo ? { replyTo: body.replyTo } : {}) }),
+  const progress = body.threadType === 'direct' && !hasEnvelope ? beginPqcActivity('send') : null;
+  try {
+    if (progress) {
+      const envelope = await encryptMessageEnvelope(apiRequest, {
+        threadId: body.threadId,
+        senderUid: body.actorUid,
+        recipientUid: body.targetUid,
+        plaintext: JSON.stringify({ ...payload, ...(body.replyTo ? { replyTo: body.replyTo } : {}) }),
+        onProgress: progress,
+      });
+      const { replyTo, text, ...transport } = body;
+      body = { ...transport, payload: envelope };
+    }
+    progress?.('relay', 'active');
+    const relayStart = performance.now();
+    const result = await apiRequest('/api/chat/messages/send', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      timeoutMs: 45_000,
     });
-    const { replyTo, text, ...transport } = body;
-    body = { ...transport, payload: envelope };
+    progress?.('relay', 'done', null, { durationMs: performance.now() - relayStart,
+      metrics: { envelopeBytes: new TextEncoder().encode(JSON.stringify(body.payload)).length } });
+    progress?.complete();
+    return result;
+  } catch (error) {
+    progress?.fail();
+    throw error;
   }
-  return apiRequest('/api/chat/messages/send', {
-    method: 'POST',
-    body: JSON.stringify(body),
-    // PQC envelopes are roughly ten times larger than classical envelopes.
-    // Allow slow ngrok/mobile uploads without extending every polling request.
-    timeoutMs: 45_000,
-  });
 };
 
 export const editChatMessage = async (body) => {
   const nextBody = { ...body };
-  if (nextBody?.threadType === "direct" && nextBody?.threadId && nextBody?.actorUid && nextBody?.targetUid && typeof nextBody?.text === "string") {
-    const envelope = await encryptMessageEnvelope(apiRequest, {
-      threadId: nextBody.threadId,
-      senderUid: nextBody.actorUid,
-      recipientUid: nextBody.targetUid,
-      plaintext: JSON.stringify({ ...(nextBody.content || {}), type: nextBody.content?.type || 'text', text: nextBody.text }),
+  const encryptDirect = nextBody?.threadType === "direct" && nextBody?.threadId && nextBody?.actorUid && nextBody?.targetUid && typeof nextBody?.text === "string";
+  const progress = encryptDirect ? beginPqcActivity('send') : null;
+  try {
+    if (encryptDirect) {
+      const envelope = await encryptMessageEnvelope(apiRequest, {
+        threadId: nextBody.threadId,
+        senderUid: nextBody.actorUid,
+        recipientUid: nextBody.targetUid,
+        plaintext: JSON.stringify({ ...(nextBody.content || {}), type: nextBody.content?.type || 'text', text: nextBody.text }),
+        onProgress: progress,
+      });
+      nextBody.payload = envelope;
+      delete nextBody.text;
+      delete nextBody.content;
+    }
+    progress?.('relay', 'active');
+    const relayStart = performance.now();
+    const result = await apiRequest("/api/chat/messages/edit", {
+      method: "PATCH",
+      body: JSON.stringify(nextBody),
     });
-    nextBody.payload = envelope;
-    delete nextBody.text;
-    delete nextBody.content;
+    progress?.('relay', 'done', null, { durationMs: performance.now() - relayStart,
+      metrics: { envelopeBytes: new TextEncoder().encode(JSON.stringify(nextBody.payload)).length } });
+    progress?.complete();
+    return result;
+  } catch (error) {
+    progress?.fail();
+    throw error;
   }
-  return apiRequest("/api/chat/messages/edit", {
-    method: "PATCH",
-    body: JSON.stringify(nextBody),
-  });
 };
 
 export const deleteChatMessageForMe = (body) =>
@@ -72,17 +100,31 @@ export const toggleChatMessageFlag = (body) =>
 // History is independently decryptable. Failed authentication never resets keys or falls back.
 export const fetchThreadMessages = async (threadType, threadId, uid) => {
   const out = await apiRequest(`/api/chat/messages?threadType=${encodeURIComponent(threadType)}&threadId=${encodeURIComponent(threadId)}&uid=${encodeURIComponent(uid || '')}`);
+  const seenKey = `${uid}:${threadType}:${threadId}`;
+  const seen = seenMessagesByThread.get(seenKey) || new Set();
+  const incoming = threadType === 'direct' ? (out.messages || []).filter((m) =>
+    m.id && !seen.has(m.id) && !m.deletedForEveryone && m.suite_id === 'pqc' && m.ciphertext_b64 &&
+    (m.receiverId || m.receiver_id) === uid && (m.senderId || m.sender_id) !== uid
+  ) : [];
+  const highlightedId = incoming.at(-1)?.id;
+  for (const m of out.messages || []) if (m.id) seen.add(m.id);
+  seenMessagesByThread.set(seenKey, seen);
   const next = await Promise.all((out.messages || []).map(async (m) => {
     if (m.deletedForEveryone || !m.ciphertext_b64) return m;
+    if (m.suite_id !== 'pqc') return { ...m, cryptoVerified: false, type: 'e2ee', text: m.suite_id === 'classical'
+      ? '[Classical message unavailable in PQC-only mode]' : '[Legacy message unavailable in PQC-only mode]' };
     const sender = m.senderId || m.sender_id;
     const receiver = m.receiverId || m.receiver_id;
+    const progress = m.id === highlightedId ? beginPqcActivity('receive') : null;
     let plaintext;
     try {
-      plaintext = await decryptEnvelopeWithParticipants(apiRequest, threadId, m, receiver, sender, uid);
+      plaintext = await decryptEnvelopeWithParticipants(apiRequest, threadId, m, receiver, sender, uid, progress);
+      progress?.complete();
     } catch (error) {
+      progress?.fail();
       const reason = error?.message || 'Unknown cryptographic error';
       console.error('Message decryption failed', { messageId: m.id, reason });
-      return { ...m, type: 'e2ee', text: `[Unable to verify or decrypt: ${reason}]` };
+      return { ...m, cryptoVerified: false, type: 'e2ee', text: `[Unable to verify or decrypt: ${reason}]` };
     }
     if (plaintext !== null) {
       try {
@@ -90,11 +132,11 @@ export const fetchThreadMessages = async (threadType, threadId, uid) => {
         // Only message content may come from the encrypted body, not server IDs/flags.
         const allowed = ['type', 'text', 'fileURL', 'fileName', 'fileSize', 'mimeType', 'fileEncryption', 'replyTo', 'forwardedFrom', 'callType', 'callStatus', 'duration'];
         const safe = Object.fromEntries(allowed.filter((key) => Object.hasOwn(content, key)).map((key) => [key, content[key]]));
-        try { return { ...m, ...await resolveEncryptedMedia(safe) }; }
-        catch { return { ...m, ...safe, fileURL: null, text: `${safe.text || ''} [Unable to decrypt attachment]` }; }
+        try { return { ...m, ...await resolveEncryptedMedia(safe), cryptoVerified: true }; }
+        catch { return { ...m, ...safe, cryptoVerified: true, fileURL: null, text: `${safe.text || ''} [Unable to decrypt attachment]` }; }
       } catch { /* Invalid authenticated content is not renderable. */ }
     }
-    return { ...m, type: 'e2ee', text: m.protocol_version === '2.0'
+    return { ...m, cryptoVerified: false, type: 'e2ee', text: m.protocol_version === '2.0'
       ? '[Unable to verify or decrypt message on this device]'
       : '[Legacy message — insecure encryption protocol retired]' };
   }));

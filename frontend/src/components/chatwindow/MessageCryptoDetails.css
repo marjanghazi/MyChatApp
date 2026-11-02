@@ -1,0 +1,14 @@
+.qx-crypto-details { width: min(360px, 100%); padding: 14px; border: 1px solid var(--accent-c); border-radius: 12px; background: var(--bg-secondary); color: var(--text); box-shadow: var(--shadow-md); font-size: 12px; }
+.qx-crypto-details-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-family: Orbitron, sans-serif; }
+.qx-crypto-details-head button { border: 0; background: transparent; color: var(--text); font-size: 20px; cursor: pointer; }
+.qx-crypto-details p { line-height: 1.45; margin: 9px 0; }
+.qx-crypto-verified { color: var(--success); }
+.qx-crypto-unverified { color: var(--warning); }
+.qx-crypto-details-flow { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; margin: 12px 0; }
+.qx-crypto-details-flow span { padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: 10px; }
+.qx-crypto-details-flow b { color: var(--accent-c); }
+.qx-crypto-details dl { display: grid; gap: 6px; margin: 0; }
+.qx-crypto-details dl div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); padding-bottom: 5px; }
+.qx-crypto-details dt { color: var(--text-dim); }
+.qx-crypto-details dd { margin: 0; font-family: 'JetBrains Mono', monospace; overflow-wrap: anywhere; text-align: right; }
+.qx-crypto-details-note { color: var(--text-dim); font-size: 10px; }

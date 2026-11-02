@@ -1,4 +1,5 @@
 import { apiRequest } from "./apiClient";
+import { beginPqcActivity } from "../crypto/pqcActivity.js";
 
 const fileToBase64 = async (file) => {
   const arrayBuffer = await file.arrayBuffer();
@@ -28,14 +29,29 @@ export const uploadMedia = async ({ uid, folder, file }) => {
 // Only ciphertext is uploaded for direct-chat attachments. The descriptor travels
 // INSIDE the authenticated message, never alongside the upload.
 export const uploadEncryptedMedia = async ({ uid, file }) => {
-  const { encryptAttachment } = await import('../crypto/protocol/attachmentEncryption.js');
-  const { toBase64 } = await import('../crypto/primitives/encoding.js');
-  const { ciphertext, descriptor } = await encryptAttachment(new Uint8Array(await file.arrayBuffer()));
-  const uploaded = await apiRequest('/api/media/upload', {
-    method: 'POST', body: JSON.stringify({ uid, folder: 'attachments', fileName: `${crypto.randomUUID()}.bin`,
-      contentType: 'application/octet-stream', dataBase64: toBase64(ciphertext) }),
-  });
-  return { fileURL: uploaded.url, fileEncryption: descriptor };
+  const progress = beginPqcActivity('attachment');
+  try {
+    const { encryptAttachment } = await import('../crypto/protocol/attachmentEncryption.js');
+    const { toBase64, fromBase64 } = await import('../crypto/primitives/encoding.js');
+    const fileBytes = new Uint8Array(await file.arrayBuffer());
+    progress('aes', 'active');
+    const aesStart = performance.now();
+    const { ciphertext, descriptor } = await encryptAttachment(fileBytes);
+    progress('aes', 'done', null, { durationMs: performance.now() - aesStart,
+      metrics: { plaintextBytes: fileBytes.length, ciphertextBytes: ciphertext.length, nonceBytes: fromBase64(descriptor.nonce_b64).length } });
+    progress('relay', 'active');
+    const relayStart = performance.now();
+    const uploaded = await apiRequest('/api/media/upload', {
+      method: 'POST', body: JSON.stringify({ uid, folder: 'attachments', fileName: `${crypto.randomUUID()}.bin`,
+        contentType: 'application/octet-stream', dataBase64: toBase64(ciphertext) }),
+    });
+    progress('relay', 'done', null, { durationMs: performance.now() - relayStart });
+    progress.complete();
+    return { fileURL: uploaded.url, fileEncryption: descriptor };
+  } catch (error) {
+    progress.fail();
+    throw error;
+  }
 };
 
 const decryptedAttachments = new Map();
@@ -50,7 +66,12 @@ export async function resolveEncryptedMedia(content) {
   if (!decryptedAttachments.has(cacheKey)) {
     const pending = (async () => {
       const { decryptAttachment, MAX_ATTACHMENT_BYTES } = await import('../crypto/protocol/attachmentEncryption.js');
-      const mediaURL = new URL(url, window.location.origin);
+      let mediaURL = new URL(url, window.location.origin);
+      // Old local uploads stored an absolute localhost URL. Route those
+      // through the current origin so the same ciphertext works over ngrok.
+      if (["localhost", "127.0.0.1"].includes(mediaURL.hostname) && mediaURL.pathname.startsWith("/api/media/local/")) {
+        mediaURL = new URL(`${mediaURL.pathname}${mediaURL.search}`, window.location.origin);
+      }
       const backendOrigin = new URL(process.env.REACT_APP_API_BASE_URL || 'http://localhost:4000', window.location.origin).origin;
       if (![window.location.origin, backendOrigin].includes(mediaURL.origin)) throw new Error('Unknown attachment host');
       const response = await fetch(mediaURL.href, { credentials: 'omit' });

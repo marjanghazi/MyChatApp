@@ -936,3 +936,5 @@
     padding-right: 10px;
   }
 }
+
+.auth-controls a.back-home-btn { text-decoration: none; }

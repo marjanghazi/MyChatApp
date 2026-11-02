@@ -1,6 +1,8 @@
 import { apiRequest } from "./apiClient";
 import { clearDecryptedAttachments } from "./mediaService";
 import { registerDeviceBundle } from "./e2eeService";
+import { beginPqcActivity } from "../crypto/pqcActivity.js";
+import { clearLocalWalkthrough } from "../crypto/localWalkthrough.js";
 
 const STORAGE_KEY = "pqc_auth_user";
 const listeners = new Set();
@@ -34,39 +36,67 @@ export const onAuthStateChanged = (callback) => {
 // Older sessions can be restored from localStorage without passing through the
 // login functions below. Register their browser-held identities as part of the
 // session migration so an app update does not require signing out and back in.
-export const ensureEncryptionIdentity = async (user = currentUser, { force = false } = {}) => {
+export const ensureEncryptionIdentity = async (user = currentUser, { force = false, onProgress } = {}) => {
   if (!user?.uid || !user?.idToken) throw new Error("Not authenticated");
   const registrationKey = `${user.uid}:${user.idToken}`;
   if (force) identityRegistrations.delete(registrationKey);
-  if (!identityRegistrations.has(registrationKey)) {
+  const alreadyRegistering = identityRegistrations.has(registrationKey);
+  if (!alreadyRegistering) {
+    const progress = onProgress || beginPqcActivity('identity', { user });
     const authenticatedRequest = (path, options = {}) => apiRequest(path, {
       ...options,
       headers: { ...options.headers, Authorization: `Bearer ${user.idToken}` },
     });
-    const pending = registerDeviceBundle(authenticatedRequest, user.uid);
+    const pending = registerDeviceBundle(authenticatedRequest, user.uid, progress);
     identityRegistrations.set(registrationKey, pending);
-    pending.catch(() => identityRegistrations.delete(registrationKey));
+    pending.then(
+      () => { if (!onProgress) progress.complete(); },
+      () => { identityRegistrations.delete(registrationKey); if (!onProgress) progress.fail(); },
+    );
   }
-  return identityRegistrations.get(registrationKey);
+  const deviceId = await identityRegistrations.get(registrationKey);
+  // A concurrent restoration may already have started the same registration.
+  if (onProgress && alreadyRegistering) for (const step of ['kem', 'dsa', 'identity_sign', 'bundle']) onProgress(step, 'done');
+  return deviceId;
 };
 
-export const createUserWithEmailAndPassword = async (email, password, displayName = "") => {
+export const createUserWithEmailAndPassword = async (email, password, displayName = "", phoneNumber = "") => {
+  const startedAt = performance.now();
   const { user } = await apiRequest("/api/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password, displayName }),
+    body: JSON.stringify({ email, password, displayName, phoneNumber }),
   });
-  const deviceId = await ensureEncryptionIdentity(user);
+  const progress = beginPqcActivity('register', { user, startedAt });
+  progress('auth', 'done', null, { durationMs: performance.now() - startedAt });
+  let deviceId;
+  try {
+    deviceId = await ensureEncryptionIdentity(user, { onProgress: progress });
+    progress.complete();
+  } catch (error) {
+    progress.fail();
+    throw error;
+  }
   const withDev = { ...user, deviceId };
   setUser(withDev);
   return { user: withDev };
 };
 
 export const signInWithEmailAndPassword = async (email, password) => {
+  const startedAt = performance.now();
   const { user } = await apiRequest("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
-  const deviceId = await ensureEncryptionIdentity(user);
+  const progress = beginPqcActivity('login', { user, startedAt });
+  progress('auth', 'done', null, { durationMs: performance.now() - startedAt });
+  let deviceId;
+  try {
+    deviceId = await ensureEncryptionIdentity(user, { onProgress: progress });
+    progress.complete();
+  } catch (error) {
+    progress.fail();
+    throw error;
+  }
   const withDev = { ...user, deviceId };
   setUser(withDev);
   return { user: withDev };
@@ -89,5 +119,6 @@ export const updateProfile = async (user, patch) => {
 
 export const signOut = async () => {
   clearDecryptedAttachments();
+  clearLocalWalkthrough();
   setUser(null);
 };

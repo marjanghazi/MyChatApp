@@ -9,8 +9,7 @@ import { tryDecryptEnvelopeWithParticipants } from "./e2eeService";
 
 const previewCache = new Map();
 
-export const fetchUsers = async (excludeUid) =>
-  apiRequest(`/api/thread/users?excludeUid=${encodeURIComponent(excludeUid)}`);
+export const fetchUsers = async () => apiRequest("/api/thread/users");
 
 export const fetchConversations = async (uid) =>
   apiRequest(`/api/thread/conversations?uid=${encodeURIComponent(uid)}`);

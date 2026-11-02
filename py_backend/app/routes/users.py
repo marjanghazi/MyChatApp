@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from psycopg2.errors import UniqueViolation
 
 from app.db import q
 from app.errors import must, phone_variants
+from app.security.request_auth import authenticated_user
 
 router = APIRouter(prefix='/api/users', tags=['users'])
 
@@ -52,31 +54,37 @@ def check_phone(body: dict):
 
 
 @router.post('/profile')
-def upsert_profile(body: dict):
+def upsert_profile(body: dict, user_id: str = Depends(authenticated_user)):
     uid = body.get('uid')
     must(uid, 'uid')
+    if uid != user_id:
+        raise HTTPException(status_code=403, detail='Cannot update another user')
     q(
-        """INSERT INTO users(uid,email,password_hash,display_name,phone_number,phone_lookup_keys,contacts,is_online,last_seen,active_at)
-         VALUES (%s,%s,%s,%s,%s,%s,%s,true,now(),now())
-         ON CONFLICT(uid) DO UPDATE SET display_name=EXCLUDED.display_name,email=EXCLUDED.email,phone_number=EXCLUDED.phone_number,phone_lookup_keys=EXCLUDED.phone_lookup_keys,updated_at=now()""",
-        (uid, body.get('email', ''), body.get('passwordHash', 'local'), body.get('displayName', ''), body.get('phoneNumber', ''), body.get('phoneLookupKeys', []), []),
+        "UPDATE users SET display_name=COALESCE(NULLIF(%s,''),display_name),updated_at=now() WHERE uid=%s",
+        (body.get('displayName'), uid),
     )
     return {'ok': True}
 
 
 @router.get('/{uid}/profile')
-def get_profile(uid: str):
+def get_profile(uid: str, user_id: str = Depends(authenticated_user)):
+    if uid != user_id:
+        raise HTTPException(status_code=403, detail='Cannot read another user profile')
     return {'profile': _to_user_payload(q('SELECT * FROM users WHERE uid=%s', (uid,), fetch='one'))}
 
 
 @router.post('/{uid}/presence')
-def set_presence(uid: str, body: dict):
+def set_presence(uid: str, body: dict, user_id: str = Depends(authenticated_user)):
+    if uid != user_id:
+        raise HTTPException(status_code=403, detail='Cannot update another user')
     q('UPDATE users SET is_online=%s,last_seen=now(),active_at=now() WHERE uid=%s', (bool(body.get('isOnline')), uid))
     return {'ok': True}
 
 
 @router.patch('/{uid}/profile')
-def patch_profile(uid: str, body: dict):
+def patch_profile(uid: str, body: dict, user_id: str = Depends(authenticated_user)):
+    if uid != user_id:
+        raise HTTPException(status_code=403, detail='Cannot update another user')
     q(
         'UPDATE users SET display_name=COALESCE(%s,display_name), photo_url=COALESCE(%s,photo_url), logo_url=COALESCE(%s,logo_url), updated_at=now() WHERE uid=%s',
         (body.get('displayName'), body.get('photoURL'), body.get('logoURL'), uid),
@@ -84,14 +92,33 @@ def patch_profile(uid: str, body: dict):
     return {'ok': True}
 
 
+@router.patch('/me/phone')
+def update_my_phone(body: dict, user_id: str = Depends(authenticated_user)):
+    must(body.get('phoneNumber'), 'phoneNumber')
+    variants = phone_variants(body['phoneNumber'])
+    try:
+        row = q(
+            'UPDATE users SET phone_number=%s,phone_lookup_keys=%s,updated_at=now() WHERE uid=%s RETURNING *',
+            (variants[0], variants, user_id),
+            fetch='one',
+        )
+    except UniqueViolation as exc:
+        raise HTTPException(status_code=409, detail='This phone number is already linked to another account') from exc
+    if not row:
+        raise HTTPException(status_code=404, detail='Account not found')
+    return {'profile': _to_user_payload(row)}
+
+
 @router.post('/{uid}/contacts')
-def add_contact(uid: str, body: dict):
+def add_contact(uid: str, body: dict, user_id: str = Depends(authenticated_user)):
+    if uid != user_id:
+        raise HTTPException(status_code=403, detail='Cannot update another user')
     phone = body.get('phoneNumber')
     must(phone, 'phoneNumber')
     variants = phone_variants(phone)
     candidate = q('SELECT * FROM users WHERE phone_number = ANY(%s) OR phone_lookup_keys && %s LIMIT 1', (variants, variants), fetch='one')
     if not candidate:
-        raise HTTPException(status_code=404, detail='No registered user found with that number.')
+        raise HTTPException(status_code=404, detail='No account has this phone number yet. Ask that person to save it in their profile.')
     if candidate['uid'] == uid:
         raise HTTPException(status_code=400, detail='You cannot add your own number.')
     q('UPDATE users SET contacts = array_append(contacts,%s), updated_at=now() WHERE uid=%s AND NOT (%s = ANY(contacts))', (candidate['phone_number'], uid, candidate['phone_number']))

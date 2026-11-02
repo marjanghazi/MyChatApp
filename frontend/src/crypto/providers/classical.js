@@ -1,3 +1,6 @@
+/*
+ * Historical X25519/Ed25519 provider, retained as a commented reference.
+ * QuantX now runs only ML-KEM-768 and ML-DSA-65 from postQuantum.js.
 async function generate(name, usages) {
   const pair = await crypto.subtle.generateKey({ name }, true, usages);
   return {
@@ -32,3 +35,4 @@ export const classical = {
     return crypto.subtle.verify('Ed25519', key, signature, message);
   },
 };
+*/

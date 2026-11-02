@@ -6,7 +6,8 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SUITES = {
-    'classical': {'kex': 'x25519', 'signature': 'ed25519', 'public': 32, 'sign_public': 32, 'sig': 64, 'kem': 32},
+    # Classical suite retained only as historical reference; the API rejects it.
+    # 'classical': {'kex': 'x25519', 'signature': 'ed25519', 'public': 32, 'sign_public': 32, 'sig': 64, 'kem': 32},
     'pqc': {'kex': 'ml-kem-768', 'signature': 'ml-dsa-65', 'public': 1184, 'sign_public': 1952, 'sig': 3309, 'kem': 1088},
 }
 
@@ -26,7 +27,7 @@ class StrictModel(BaseModel):
 
 class KeyBundle(StrictModel):
     protocol_version: Literal['2.0']
-    suite_id: Literal['classical', 'pqc']
+    suite_id: Literal['pqc']
     user_id: str = Field(min_length=1, max_length=128)
     device_id: str = Field(min_length=1, max_length=128)
     encryption_public_key_b64: str
@@ -42,12 +43,12 @@ class KeyBundle(StrictModel):
         return self
 
 class RegisterBundles(StrictModel):
-    bundles: list[KeyBundle] = Field(min_length=2, max_length=2)
+    bundles: list[KeyBundle] = Field(min_length=1, max_length=1)
 
     @model_validator(mode='after')
-    def unique_suites(self):
+    def validate_pqc_suite(self):
         if {b.suite_id for b in self.bundles} != set(SUITES):
-            raise ValueError('Register one identity for each supported suite')
+            raise ValueError('Register exactly one PQC identity')
         return self
 
 class KeyWrap(StrictModel):
@@ -59,7 +60,7 @@ class KeyWrap(StrictModel):
 
 class EncryptedEnvelope(StrictModel):
     protocol_version: Literal['2.0']
-    suite_id: Literal['classical', 'pqc']
+    suite_id: Literal['pqc']
     kex_algorithm: str
     signature_algorithm: str
     kdf_algorithm: Literal['hkdf-sha256']

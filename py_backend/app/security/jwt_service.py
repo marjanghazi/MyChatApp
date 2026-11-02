@@ -22,5 +22,15 @@ class JwtService:
         }
         return jwt.encode(payload, self.secret, algorithm=self.algorithm)
 
+    def issue_admin_token(self, *, email: str) -> str:
+        now = datetime.now(timezone.utc)
+        payload = {
+            'sub': email,
+            'iat': int(now.timestamp()),
+            'exp': int((now + timedelta(minutes=self.ttl_minutes)).timestamp()),
+            'scope': 'admin:read',
+        }
+        return jwt.encode(payload, self.secret, algorithm=self.algorithm)
+
     def decode(self, token: str) -> dict:
         return jwt.decode(token, self.secret, algorithms=[self.algorithm], options={'require_exp': True, 'require_iat': True, 'require_sub': True})

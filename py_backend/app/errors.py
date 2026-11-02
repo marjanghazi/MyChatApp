@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
+import re
+
 
 def must(value, name: str) -> None:
     if value is None:
@@ -17,10 +19,23 @@ def must_thread_type(thread_type: str) -> None:
 
 
 def phone_variants(raw: str) -> list[str]:
-    digits = ''.join(ch for ch in str(raw or '') if ch.isdigit())
-    variants = {digits}
-    if digits.startswith('0') and len(digits) > 1:
-        variants.add(f'92{digits[1:]}')
-    if digits.startswith('92') and len(digits) > 2:
-        variants.add(f'0{digits[2:]}')
-    return [v for v in variants if v]
+    value = str(raw or '').strip()
+    if re.search(r'[A-Za-z]', value):
+        raise HTTPException(status_code=400, detail='Enter a valid phone number with country code')
+    digits = re.sub(r'\D', '', value)
+    if digits.startswith('00'):
+        digits = digits[2:]
+    if re.fullmatch(r'03\d{9}', digits):
+        digits = '92' + digits[1:]
+    elif re.fullmatch(r'3\d{9}', digits):
+        digits = '92' + digits
+    elif not (value.startswith('+') or re.fullmatch(r'[1-9]\d{7,14}', digits)):
+        raise HTTPException(status_code=400, detail='Enter a valid phone number with country code')
+    if not re.fullmatch(r'[1-9]\d{7,14}', digits):
+        raise HTTPException(status_code=400, detail='Enter a valid phone number with country code')
+    if digits.startswith('92') and not re.fullmatch(r'923\d{9}', digits):
+        raise HTTPException(status_code=400, detail='Enter a valid Pakistan mobile number')
+    variants = [digits]
+    if digits.startswith('923'):
+        variants.extend(['0' + digits[2:], digits[2:]])
+    return variants

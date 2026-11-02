@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from app.errors import must
@@ -38,14 +38,14 @@ def _resolve_local_file(storage_path: str) -> Path:
     assert_allowed(clean_path)
     file_path = (LOCAL_MEDIA_ROOT / clean_path).resolve()
     root = LOCAL_MEDIA_ROOT.resolve()
-    if not str(file_path).startswith(str(root)):
+    if not file_path.is_relative_to(root):
         raise HTTPException(status_code=403, detail='Invalid storage path.')
     return file_path
 
 
-def _local_url_for(request: Request, storage_path: str) -> str:
+def _local_url_for(storage_path: str) -> str:
     encoded = quote(storage_path, safe='')
-    return str(request.base_url) + f'api/media/local/{encoded}'
+    return f'/api/media/local/{encoded}'
 
 
 def _save_local(storage_path: str, content: bytes) -> None:
@@ -64,7 +64,7 @@ def get_local_file(encoded_path: str):
 
 
 @router.post('/upload')
-def upload(body: dict, request: Request):
+def upload(body: dict):
     uid = body.get('uid')
     folder = body.get('folder')
     file_name = body.get('fileName')
@@ -82,11 +82,11 @@ def upload(body: dict, request: Request):
     assert_allowed(file_path)
     data = base64.b64decode(data_base64)
     _save_local(file_path, data)
-    return {'ok': True, 'url': _local_url_for(request, file_path), 'path': file_path, 'storage': 'local'}
+    return {'ok': True, 'url': _local_url_for(file_path), 'path': file_path, 'storage': 'local'}
 
 
 @router.post('/upload-by-path')
-def upload_by_path(body: dict, request: Request):
+def upload_by_path(body: dict):
     storage_path = body.get('storagePath')
     content_type = body.get('contentType')
     data_base64 = body.get('dataBase64')
@@ -97,7 +97,7 @@ def upload_by_path(body: dict, request: Request):
     assert_allowed(storage_path)
     data = base64.b64decode(data_base64)
     _save_local(storage_path, data)
-    return {'ok': True, 'url': _local_url_for(request, storage_path), 'path': storage_path, 'storage': 'local'}
+    return {'ok': True, 'url': _local_url_for(storage_path), 'path': storage_path, 'storage': 'local'}
 
 
 @router.post('/delete-by-path')

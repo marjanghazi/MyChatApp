@@ -25,6 +25,7 @@ if ! PYTHONPATH="$backend_dir" "$python_bin" -c \
   'from app.config import load_env; load_env(); from app.db import db_healthcheck; db_healthcheck()' \
   >/dev/null 2>&1; then
   echo "PostgreSQL is unavailable or py_backend/.env has incorrect database settings." >&2
+  echo "On Debian/Ubuntu, start it with: sudo systemctl start postgresql" >&2
   echo "Start PostgreSQL, then verify: pg_isready -h localhost -p 5432" >&2
   echo "Backend configuration: $backend_dir/.env" >&2
   exit 1

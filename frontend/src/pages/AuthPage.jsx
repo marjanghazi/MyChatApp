@@ -15,8 +15,8 @@ function AuthPage({
   onBackToHome,
 }) {
   const panelFeatures = [
-    { icon: '🔑', label: 'CRYSTALS-Kyber Key Encapsulation' },
-    { icon: '✍️', label: 'CRYSTALS-Dilithium Signatures' },
+    { icon: '🔑', label: 'ML-KEM-768 (Kyber) Key Encapsulation' },
+    { icon: '✍️', label: 'ML-DSA-65 (Dilithium) Signatures' },
     { icon: '🔒', label: 'AES-256-GCM Authenticated Encryption' },
   ];
 
@@ -111,6 +111,7 @@ function AuthPage({
               <span className="btn-icon">←</span>
               Back to Home
             </button>
+            <a className="back-home-btn" href="/admin">Admin</a>
           </div>
 
           {/* Mode tabs */}
@@ -160,7 +161,7 @@ function AuthPage({
                     required
                     autoComplete="tel"
                   />
-                  <label htmlFor="phoneNumber">Phone (with country code)</label>
+                  <label htmlFor="phoneNumber">Phone number (03... or +92...)</label>
                 </div>
               </>
             )}

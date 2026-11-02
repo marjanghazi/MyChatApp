@@ -14,6 +14,12 @@ export const upsertUserProfile = async (payload) =>
 
 export const fetchUserProfile = async (uid) => apiRequest(`/api/users/${uid}/profile`);
 
+export const updateMyPhoneNumber = async (phoneNumber) =>
+  apiRequest("/api/users/me/phone", {
+    method: "PATCH",
+    body: JSON.stringify({ phoneNumber }),
+  });
+
 export const setPresence = async (uid, isOnline) =>
   apiRequest(`/api/users/${uid}/presence`, {
     method: "POST",

@@ -1,5 +1,6 @@
 // PublicHomePage.jsx — QUANTX Next-Level Cybersecurity UI
 import React, { useState, useEffect } from 'react';
+import CryptoLab from '../components/crypto/CryptoLab';
 import './PublicHomePage.css';
 
 const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
@@ -30,7 +31,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
 
   /* Active-section tracker */
   useEffect(() => {
-    const sections = ['home','features','about','security','architecture','sdg','contact'];
+    const sections = ['home','crypto-lab','features','about','security','architecture','sdg','contact'];
     if (typeof IntersectionObserver === 'undefined') return;
     const obs = new IntersectionObserver(
       entries => entries.forEach(e => { if (e.isIntersecting) setActiveSection(e.target.id); }),
@@ -53,7 +54,8 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
   };
 
   /* ── DATA ── */
-  const navItems = ['home','features','about','security','architecture','sdg','contact'];
+  const navItems = ['home','crypto-lab','features','about','security','architecture','sdg','contact'];
+  const navLabel = (section) => section === 'crypto-lab' ? 'Live demo' : section === 'sdg' ? 'SDG' : section.charAt(0).toUpperCase() + section.slice(1);
 
   const highlights = [
     {
@@ -64,7 +66,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
     },
     {
       title: 'Quantum-Resistant Core',
-      description: 'Compare a classical X25519/Ed25519 mode with an ML-KEM/ML-DSA mode in the same chat application.',
+      description: 'Direct chat uses ML-KEM-768, ML-DSA-65, and AES-256-GCM in one active post-quantum protocol.',
       icon: '⚛️',
       color: 'var(--ph-accent-b)',
     },
@@ -79,8 +81,8 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
   const features = [
     { title: 'ML-KEM-768 KEM',     description: 'Module-Lattice Key Encapsulation for quantum-safe shared secret derivation. CCA-secure and NIST standardized.',                           icon: '🔑' },
     { title: 'ML-DSA-65',     description: 'Digital signatures from module lattices for message authentication and integrity, combined with contact safety-number verification.',                   icon: '✍️' },
-    { title: 'AES-256-GCM Encryption', description: 'Random 256-bit keys encrypt direct messages and direct-chat attachments in both modes.',                           icon: '🔐' },
-    { title: 'Migration Demonstration',        description: 'Switch the configured mode and compare message algorithms, key sizes, and local benchmark timings.',                          icon: '📊' },
+    { title: 'AES-256-GCM Encryption', description: 'Fresh 256-bit keys encrypt direct messages and direct-chat attachments in the browser.',                           icon: '🔐' },
+    { title: 'Live Protocol Demonstration', description: 'Watch real key generation, encapsulation, signing, decryption, and tamper rejection with local timings.', icon: '📊' },
     { title: 'Local Key Storage',     description: 'Browser-local identities preserve message history across reloads. Secret keys are never synchronized to the server.',             icon: '🔄' },
     { title: 'MITM Detection',         description: 'Changed contact identities block sending until you verify and trust the new safety number.',                     icon: '🛡️' },
   ];
@@ -111,7 +113,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
     { name: 'ML-KEM-768 KEM',     details: 'Key Generation • Encapsulation • Decapsulation',     icon: '🔑' },
     { name: 'ML-DSA-65',     details: 'Signature Generation & Verification',                icon: '✍️' },
     { name: 'AES-256-GCM Layer',      details: 'Message Encryption • File Sharing • Integrity',      icon: '🔒' },
-    { name: 'Migration Demonstration',        details: 'Classical • PQC • Local Benchmarks',            icon: '📊' },
+    { name: 'Live Protocol Demonstration', details: 'PQC Walkthrough • Message Inspector • Local Timings', icon: '📊' },
   ];
 
   return (
@@ -160,7 +162,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
                 className={`ph-nav-link ${activeSection === section ? 'ph-active' : ''}`}
                 onClick={() => scrollToSection(section)}
               >
-                {section === 'sdg' ? 'SDG' : section.charAt(0).toUpperCase() + section.slice(1)}
+                {navLabel(section)}
               </button>
             ))}
           </div>
@@ -172,6 +174,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
               <span className="ph-btn-text">{appTheme === 'dark' ? 'Light' : 'Dark'}</span>
             </button>
             <button type="button" className="ph-ghost-btn"   onClick={() => handleNavigation('login',    'login')}>Sign In</button>
+            <a className="ph-ghost-btn ph-admin-link" href="/admin">Admin</a>
             <button type="button" className="ph-primary-btn" onClick={() => handleNavigation('register', 'register')}>Get Started</button>
             <button className="ph-mobile-menu-btn" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               {mobileMenuOpen ? '✕' : '☰'}
@@ -184,12 +187,13 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
           <div className="ph-mobile-nav">
             {navItems.map(section => (
               <button key={section} className="ph-mobile-nav-link" onClick={() => scrollToSection(section)}>
-                {section === 'sdg' ? 'SDG Goals' : section.charAt(0).toUpperCase() + section.slice(1)}
+                {navLabel(section)}
               </button>
             ))}
             <button className="ph-primary-btn" style={{ marginTop: '0.5rem' }} onClick={() => handleNavigation('register', 'register')}>
               Get Started →
             </button>
+            <a className="ph-mobile-nav-link" href="/admin">Admin</a>
           </div>
         )}
       </header>
@@ -217,8 +221,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
             </div>
 
             <p className="ph-hero-description">
-              QuantX demonstrates migration from classical X25519 and Ed25519 to ML-KEM-768 and ML-DSA-65,
-              while keeping AES-256-GCM and the same direct-chat experience.
+              QuantX uses ML-KEM-768 and ML-DSA-65 with AES-256-GCM for direct chat.
               Direct messages and their attachments are encrypted in your browser.
               Group posts and calls are outside this encryption demonstration.
             </p>
@@ -227,8 +230,8 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
               <button className="ph-primary-btn ph-large" onClick={() => handleNavigation('register', 'register')}>
                 Start Secure Messaging <span className="ph-btn-arrow">→</span>
               </button>
-              <button className="ph-ghost-btn ph-large" onClick={() => scrollToSection('features')}>
-                Explore Features <span className="ph-btn-arrow">▼</span>
+              <button className="ph-ghost-btn ph-large" onClick={() => scrollToSection('crypto-lab')}>
+                See Live Crypto Demo <span className="ph-btn-arrow">▼</span>
               </button>
             </div>
 
@@ -262,12 +265,14 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
           </div>
         </section>
 
+        <CryptoLab />
+
         {/* HIGHLIGHTS */}
         <section className="ph-highlights-section">
           <div className="ph-section-header">
             <span className="ph-section-label">WHY QUANTX</span>
             <h2>Built for the Quantum Age</h2>
-            <p>Compare classical and post-quantum algorithms in one direct-chat application.</p>
+            <p>See post-quantum key exchange, signatures, and encryption happen in your browser.</p>
           </div>
           <div className="ph-highlight-grid">
             {highlights.map((item) => (
@@ -307,14 +312,13 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
               <span className="ph-section-label" style={{ marginBottom: '1rem', display: 'inline-block' }}>ABOUT</span>
               <h2>About QuantX</h2>
               <p className="ph-about-lead">
-                An educational chat application demonstrating migration to standardized post-quantum algorithms.
+                An educational chat application using standardized post-quantum algorithms for direct messaging.
               </p>
               <p>
                 Developed by <strong>M. Marjan Ghazi</strong>, <strong>M. Mudassir</strong>, and <strong>Faiq Riaz</strong> at
                 National University of Modern Languages, Islamabad, supervised by <strong>Faisal Hussain</strong>.
                 QuantX bridges theoretical post-quantum cryptography with practical daily communication,
-                implementing ML-KEM-768, ML-DSA-65, and AES-256-GCM for the PQC mode, alongside
-                a classical X25519 and Ed25519 baseline.
+                implementing ML-KEM-768, ML-DSA-65, and AES-256-GCM for direct messages.
               </p>
               <div className="ph-about-features">
                 {[
@@ -323,7 +327,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
                   'AES-256-GCM Authenticated Encryption',
                   'Contact Identity Verification',
                   'React Browser Client',
-                  'Classical and PQC Comparison',
+                  'Live PQC Protocol Walkthrough',
                 ].map((item, i) => (
                   <div key={i} className="ph-about-item">
                     <span className="ph-about-check">✓</span>
@@ -351,7 +355,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
           <div className="ph-section-header">
             <span className="ph-section-label">CRYPTOGRAPHY</span>
             <h2>NIST Post-Quantum Security Architecture</h2>
-            <p>Multi-layer lattice-based protection against quantum and classical threats.</p>
+            <p>Post-quantum key establishment and signatures with authenticated message encryption.</p>
           </div>
           <div className="ph-security-grid">
             {securityAlgorithms.map((algo, i) => (
@@ -364,7 +368,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
             ))}
           </div>
           <div className="ph-security-note">
-            🔬 NIST PQC Standardization Project • ML-KEM-768 (2023) • ML-DSA-65 (2023) • FIPS-197 AES
+            🔬 NIST FIPS 203 (ML-KEM) • FIPS 204 (ML-DSA) • SP 800-38D (GCM)
           </div>
         </section>
 
@@ -373,7 +377,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
           <div className="ph-section-header">
             <span className="ph-section-label">SYSTEM DESIGN</span>
             <h2>System Architecture</h2>
-            <p>A modular browser implementation for comparing classical and post-quantum direct messaging.</p>
+            <p>The browser protects direct messages; the Python backend relays ciphertext and public identities.</p>
           </div>
 
           <div className="ph-architecture-diagram">
@@ -383,7 +387,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
               { icon: '🔑', label: 'ML-KEM-768 KEM',           detail: 'Key Generation • Public/Secret Keys • Encapsulation/Decapsulation • Shared Secret' },
               { icon: '✍️', label: 'ML-DSA-65 Signatures', detail: 'Bundle Signing • Message Signing • Contact Verification' },
               { icon: '🔒', label: 'AES-256-GCM Encryption Layer', detail: 'Message Encryption/Decryption • File Sharing • Integrity Validation' },
-              { icon: '📊', label: 'Migration Demonstration',               detail: 'Mode Selection • Message Labels • Local Benchmark Script' },
+              { icon: '📊', label: 'Live Cryptography Demo', detail: 'PQC Stages • Message Inspector • Local Timings' },
             ].map((layer, i, arr) => (
               <React.Fragment key={i}>
                 <div className="ph-arch-layer">
@@ -458,8 +462,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
           <div className="ph-cta-content">
             <h2>Ready for Post-Quantum Secure Communication?</h2>
             <p>
-              Join the future of secure messaging with ML-KEM-768, ML-DSA-65, and AES-256-GCM —
-              Explore the transition from classical to post-quantum direct messaging.
+              Explore direct messaging protected by ML-KEM-768, ML-DSA-65, and AES-256-GCM.
             </p>
             <div className="ph-cta-buttons">
               <button className="ph-primary-btn ph-large" onClick={() => handleNavigation('register', 'register')}>
@@ -514,7 +517,7 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
             </div>
             <p>
               Post-Quantum Secure Communication integrating ML-KEM-768, ML-DSA-65,
-              and AES-256-GCM in an educational migration demonstration.
+              and AES-256-GCM in an educational direct-messaging demonstration.
             </p>
             <div className="ph-social-links">
               <a href="https://github.com/paulmillr/noble-post-quantum" className="ph-social-link">Crypto library</a>
@@ -525,31 +528,24 @@ const PublicHomePage = ({ appTheme, onToggleTheme, onNavigate }) => {
 
           <div className="ph-footer-section">
             <h4>Product</h4>
-            {['features','security','architecture','sdg'].map(s => (
+            {['crypto-lab','features','security','architecture','sdg'].map(s => (
               <button key={s} className="ph-footer-link" onClick={() => scrollToSection(s)}>
-                {s === 'sdg' ? 'SDG Goals' : s.charAt(0).toUpperCase() + s.slice(1)}
+                {navLabel(s)}
               </button>
             ))}
           </div>
 
           <div className="ph-footer-section">
-            <h4>Research</h4>
-            {['ML-KEM-768','ML-DSA-65','NIST PQC Standards','Publications'].map((item, i) => (
-              <button key={i} className="ph-footer-link">{item}</button>
-            ))}
-          </div>
-
-          <div className="ph-footer-section">
-            <h4>Legal</h4>
-            {['Privacy Policy','Security Whitepaper','NIST Compliance'].map((item, i) => (
-              <button key={i} className="ph-footer-link">{item}</button>
-            ))}
+            <h4>Standards</h4>
+            <a className="ph-footer-link" href="https://csrc.nist.gov/pubs/fips/203/final" target="_blank" rel="noreferrer">FIPS 203 · ML-KEM</a>
+            <a className="ph-footer-link" href="https://csrc.nist.gov/pubs/fips/204/final" target="_blank" rel="noreferrer">FIPS 204 · ML-DSA</a>
+            <a className="ph-footer-link" href="https://csrc.nist.gov/pubs/sp/800/38/d/final" target="_blank" rel="noreferrer">SP 800-38D · GCM</a>
           </div>
         </div>
 
         <div className="ph-footer-bottom">
-          <p>© 2025 QuantX • Department of Computer Science, National University of Modern Languages, Islamabad</p>
-          <p className="ph-footer-status">⚛ ML-KEM-768 • ML-DSA-65 • AES-256-GCM • Quantum-Secure 🔒</p>
+          <p>© {new Date().getFullYear()} QuantX • Department of Computer Science, National University of Modern Languages, Islamabad</p>
+          <p className="ph-footer-status">⚛ ML-KEM-768 • ML-DSA-65 • AES-256-GCM • Educational demo 🔒</p>
         </div>
       </footer>
 

@@ -1,6 +1,7 @@
 
 import { useEffect, useState } from "react";
 import "./ChatMessages.styles.css";
+import MessageCryptoDetails from './MessageCryptoDetails';
 
 const ChatMessages = ({
   visibleMessages,
@@ -31,6 +32,7 @@ const ChatMessages = ({
   setEditingMessageId,
 }) => {
   const [actionMenuFor, setActionMenuFor] = useState(null);
+  const [inspectedMessageId, setInspectedMessageId] = useState(null);
 
   useEffect(() => {
     const closeOnOutsideClick = (event) => {
@@ -201,7 +203,7 @@ const ChatMessages = ({
                   )}
                   {shouldShowText && <p className="qx-msg-text">{msg.text}</p>}
                   <div className="qx-msg-meta">
-                    {msg.protocol_version === '2.0' && <span className="qx-msg-time" title={msg.suite_id === 'pqc' ? 'ML-KEM-768 · ML-DSA-65 · AES-256-GCM' : 'X25519 · Ed25519 · AES-256-GCM'}>{msg.suite_id === 'pqc' ? 'PQC' : 'Classical'} · </span>}
+                    {msg.protocol_version === '2.0' && <span className="qx-msg-time" title={msg.suite_id === 'pqc' ? 'ML-KEM-768 · ML-DSA-65 · AES-256-GCM' : 'Unavailable legacy suite'}>{msg.suite_id === 'pqc' ? 'PQC' : 'Legacy'} · </span>}
                     <span className="qx-msg-time">{formatTime(msg.createdAt)}</span>
                     {msg.editedAt && <span className="qx-msg-edited">edited</span>}
                     {(msg.starredBy || []).includes(authUser.uid) && <span className="qx-msg-flag">⭐</span>}
@@ -227,6 +229,11 @@ const ChatMessages = ({
                   </button>
                   {actionMenuFor === msg.id && (
                     <div className={`qx-msg-actions-menu ${isMine ? "qx-msg-actions-menu--mine" : "qx-msg-actions-menu--theirs"}`} onClick={(event) => event.stopPropagation()}>
+                      {activeThreadType === 'direct' && msg.protocol_version === '2.0' && msg.suite_id === 'pqc' && msg.ciphertext_b64 && !msg.deletedForEveryone && (
+                        <button type="button" className="qx-msg-actions-item" onClick={() => { setInspectedMessageId(inspectedMessageId === msg.id ? null : msg.id); setActionMenuFor(null); }}>
+                          🔬 View encryption
+                        </button>
+                      )}
                       <button type="button" className="qx-msg-actions-item" onClick={() => { setReplyTo(msg); setReplyTargetUser(msg.senderId ? usersById.get(msg.senderId) || null : null); setActionMenuFor(null); }}>
                         ↩ Reply
                       </button>
@@ -260,6 +267,7 @@ const ChatMessages = ({
                     </div>
                   )}
                 </div>
+                {inspectedMessageId === msg.id && <MessageCryptoDetails message={msg} onClose={() => setInspectedMessageId(null)} />}
                 {forwardOpenFor === msg.id && (
                   <div className="qx-forward-panel">
                     <p className="qx-forward-label">Forward to:</p>

@@ -4,10 +4,11 @@ import os
 import secrets
 
 from fastapi import APIRouter, HTTPException, Depends
+from psycopg2.errors import UniqueViolation
 from app.security.request_auth import authenticated_user
 
 from app.db import q
-from app.errors import must
+from app.errors import must, phone_variants
 from app.security.jwt_service import JwtService
 from app.security.passwords import PasswordHasher
 
@@ -32,41 +33,49 @@ def _to_user(row, *, device_id: str):
         'refreshToken': refresh_token,
         'deviceId': device_id,
         'tokenType': 'Bearer',
-        'supportedCryptoSuites': ['classical', 'pqc'],
+        'supportedCryptoSuites': ['pqc'],
     }
 
 
 @router.post('/register', status_code=201)
 def register(body: dict):
-    email = body.get('email')
+    email = str(body.get('email') or '').strip().lower()
     password = body.get('password')
+    phone = body.get('phoneNumber')
     must(email, 'email')
     must(password, 'password')
+    must(phone, 'phoneNumber')
+    variants = phone_variants(phone)
+    if str(email).strip().lower() == os.getenv('ADMIN_EMAIL', '').strip().lower() and os.getenv('ADMIN_EMAIL', '').strip():
+        raise HTTPException(status_code=400, detail='This email address is reserved')
 
     uid = body.get('uid') or secrets.token_hex(12)
     try:
         q(
-            "INSERT INTO users(uid,email,password_hash,display_name,is_online) VALUES (%s,%s,%s,%s,true)",
-            (uid, email, password_hasher.hash(password), body.get('displayName') or ''),
+            "INSERT INTO users(uid,email,password_hash,display_name,phone_number,phone_lookup_keys,is_online) VALUES (%s,%s,%s,%s,%s,%s,true)",
+            (uid, email, password_hasher.hash(password), body.get('displayName') or '', variants[0], variants),
         )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except UniqueViolation as exc:
+        field = 'phone number' if 'phone' in (exc.diag.constraint_name or '') else 'email address'
+        raise HTTPException(status_code=409, detail=f'This {field} is already registered') from exc
 
     row = q("SELECT * FROM users WHERE uid=%s", (uid,), fetch='one')
+    q("INSERT INTO auth_events(account_id,event_type) VALUES (%s,'register')", (uid,))
     device_id = body.get('deviceId') or secrets.token_hex(8)
     return {'user': _to_user(row, device_id=device_id)}
 
 
 @router.post('/login')
 def login(body: dict):
-    email = body.get('email')
+    email = str(body.get('email') or '').strip().lower()
     password = body.get('password')
     must(email, 'email')
     must(password, 'password')
 
-    row = q("SELECT * FROM users WHERE email=%s", (email,), fetch='one')
+    row = q("SELECT * FROM users WHERE lower(email)=%s", (email,), fetch='one')
     if not row or not password_hasher.verify(password, row['password_hash']):
         raise HTTPException(status_code=400, detail='Invalid credentials')
+    q("INSERT INTO auth_events(account_id,event_type) VALUES (%s,'login')", (row['uid'],))
     device_id = body.get('deviceId') or secrets.token_hex(8)
     return {'user': _to_user(row, device_id=device_id)}
 

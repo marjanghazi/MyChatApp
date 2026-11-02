@@ -27,7 +27,7 @@ import {
   fetchUserProfile,
   setPresence,
   updateUserProfile,
-  upsertUserProfile,
+  updateMyPhoneNumber,
 } from "./services/userService";
 import { uploadMedia } from "./services/mediaService";
 import { showToast } from "./services/alertService";
@@ -37,8 +37,7 @@ import PublicHomePage from "./pages/PublicHomePage";
 import AuthPage       from "./pages/AuthPage";
 import Sidebar        from "./components/Sidebar";
 import ChatWindow     from "./components/chatwindow/ChatWindow";
-
-const normalizePhone = (raw) => raw.replace(/\D/g, "");
+import ProfileKeyInspector from "./components/crypto/ProfileKeyInspector";
 
 const AUTH_ERROR_MESSAGES = {
   "auth/invalid-email": "Please enter a valid email address.",
@@ -58,10 +57,7 @@ const getAuthErrorMessage = (error) => {
 };
 
 const isPageHidden = () => typeof document !== "undefined" && document.hidden;
-const syncedProfileUids = new Set();
-
 function App() {
-  const lastProfileSyncRef = useRef({ uid: "", ts: 0 });
   const [appTheme, setAppTheme] = useState(() => {
     const saved = localStorage.getItem("appTheme");
     if (saved === "light" || saved === "dark") return saved;
@@ -93,6 +89,9 @@ function App() {
   const [updatingProfile,   setUpdatingProfile]   = useState(false);
   const [showProfilePanel,  setShowProfilePanel]  = useState(false);
   const [profileNameInput,  setProfileNameInput]  = useState("");
+  const [phoneInput,        setPhoneInput]        = useState("");
+  const [phoneSaving,       setPhoneSaving]       = useState(false);
+  const [phoneError,        setPhoneError]        = useState("");
   const [statusText,        setStatusText]        = useState("");
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(380);
@@ -120,22 +119,8 @@ function App() {
         // Migrates identities for sessions restored after an application update.
         // Login already performs this call; the service de-duplicates it.
         await ensureEncryptionIdentity(user);
-        const now = Date.now();
-        if (syncedProfileUids.has(user.uid)) {
-          return;
-        }
-        if (lastProfileSyncRef.current.uid === user.uid && now - lastProfileSyncRef.current.ts < 5 * 60_000) {
-          return;
-        }
-        await upsertUserProfile({
-          uid: user.uid,
-          displayName: user.displayName || user.email?.split("@")[0] || "User",
-          email: user.email || "",
-        });
-        lastProfileSyncRef.current = { uid: user.uid, ts: now };
-        syncedProfileUids.add(user.uid);
       } catch {
-        setAuthError("Unable to sync profile. Check network and try again.");
+        setAuthError("Unable to restore encryption identity. Check network and try again.");
       }
     });
     return unsubscribe;
@@ -223,10 +208,11 @@ function App() {
     };
   }, [authUser?.uid]);
 
+  useEffect(() => { setPhoneInput(profile?.phoneNumber || ""); }, [profile?.phoneNumber]);
+
   // ── Users ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!authUser?.uid) return undefined;
-    const uid = authUser.uid;
 
     let active = true;
     let inFlight = false;
@@ -234,7 +220,7 @@ function App() {
       if (!active || inFlight || isPageHidden()) return;
       inFlight = true;
       try {
-        const { users } = await fetchUsers(uid);
+        const { users } = await fetchUsers();
         if (active) setAllUsers(users || []);
       } catch {
         if (active) setAllUsers([]);
@@ -385,19 +371,8 @@ function App() {
 
   // ── Contacts ──────────────────────────────────────────────────────────────
   const contacts = useMemo(() => {
-    const visible   = new Map();
-    const contactSet = new Set((profile?.contacts || []).map(normalizePhone));
-    const usersById  = new Map(allUsers.map((u) => [u.uid, u]));
-
-    allUsers.forEach((u) => {
-      if (contactSet.has(normalizePhone(u.phoneNumber || ""))) visible.set(u.uid, u);
-    });
-    Object.values(conversations).forEach((conv) => {
-      const partnerUid = (conv.participants || []).find((uid) => uid !== authUser?.uid);
-      if (partnerUid && usersById.get(partnerUid)) visible.set(partnerUid, usersById.get(partnerUid));
-    });
-    return [...visible.values()].sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
-  }, [allUsers, authUser?.uid, conversations, profile?.contacts]);
+    return [...allUsers].sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
+  }, [allUsers]);
 
   // ── Auth actions ──────────────────────────────────────────────────────────
   const submitAuth = async (event) => {
@@ -406,17 +381,10 @@ function App() {
     setAuthError("");
     try {
       if (authMode === "register") {
-        const { available, normalizedPhone, phoneVariants } = await checkPhoneAvailability(authForm.phoneNumber);
+        const { available, normalizedPhone } = await checkPhoneAvailability(authForm.phoneNumber);
         if (!available) throw new Error("This phone number is already linked to another account.");
 
-        const creds = await createUserWithEmailAndPassword(authForm.email, authForm.password, authForm.displayName.trim());
-        await upsertUserProfile({
-          uid: creds.user.uid,
-          displayName: authForm.displayName.trim(),
-          email: authForm.email.trim(),
-          phoneNumber: normalizedPhone,
-          phoneLookupKeys: phoneVariants,
-        });
+        await createUserWithEmailAndPassword(authForm.email, authForm.password, authForm.displayName.trim(), normalizedPhone);
       } else {
         await signInWithEmailAndPassword(authForm.email, authForm.password);
       }
@@ -435,6 +403,9 @@ function App() {
     try {
       const { candidate } = await addContactByPhoneApi({ uid: authUser.uid, phoneNumber: contactPhone });
       setContactFeedback(`✓ Secured link to ${candidate.displayName}`);
+      setAllUsers((previous) => previous.some((user) => user.uid === candidate.uid) ? previous : [...previous, candidate]);
+      setSelectedUser(candidate);
+      setActiveThreadType("direct");
     } catch (error) {
       setContactFeedback(error?.message || "Unable to add contact right now.");
       return;
@@ -581,6 +552,22 @@ function App() {
       setStatusText("✗ Update failed.");
     } finally {
       setUpdatingProfile(false);
+    }
+  };
+
+  const savePhoneNumber = async (event) => {
+    event.preventDefault();
+    if (!phoneInput.trim()) return;
+    setPhoneSaving(true);
+    setPhoneError("");
+    try {
+      const { profile: updated } = await updateMyPhoneNumber(phoneInput.trim());
+      setProfile(updated);
+      setStatusText("✓ Phone number saved. Other users can now find you by it.");
+    } catch (error) {
+      setPhoneError(error.message || "Unable to save phone number.");
+    } finally {
+      setPhoneSaving(false);
     }
   };
 
@@ -791,7 +778,8 @@ function App() {
               </div>
               <div>
                 <p className="qx-profile-name">{profile?.displayName || "Agent"}</p>
-                <p className="qx-profile-phone">{profile?.phoneNumber || authUser.email}</p>
+                <p className="qx-profile-phone">{profile?.phoneNumber || "No phone number saved"}</p>
+                <p className="qx-profile-phone">{authUser.email}</p>
                 <div className="qx-status-dot-row"><span className="qx-status-dot" /><span>Online & Secure</span></div>
               </div>
               <button type="button" className="qx-profile-close" onClick={() => setShowProfilePanel(false)}>✕</button>
@@ -812,6 +800,25 @@ function App() {
                 {updatingProfile ? <><span className="qx-spinner-sm" /> Updating…</> : "Save Identity"}
               </button>
             </form>
+            <form className="qx-profile-form" onSubmit={savePhoneNumber}>
+              <div className="qx-form-group">
+                <label htmlFor="account-phone">Your phone number</label>
+                <input
+                  id="account-phone"
+                  type="tel"
+                  value={phoneInput}
+                  placeholder="03288179010 or +923288179010"
+                  onChange={(event) => setPhoneInput(event.target.value)}
+                  autoComplete="tel"
+                  required
+                />
+                <small className="qx-profile-phone-hint">Save the number that belongs to this account so others can add you.</small>
+              </div>
+              {phoneError && <p className="qx-profile-phone-error" role="alert">{phoneError}</p>}
+              <button type="submit" className="qx-btn qx-btn--primary" disabled={phoneSaving}>
+                {phoneSaving ? "Saving…" : "Save Phone Number"}
+              </button>
+            </form>
             <div className="qx-profile-uploads">
               <label htmlFor="brand-logo" className="qx-upload-btn">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -819,6 +826,7 @@ function App() {
               </label>
               <input id="brand-logo" type="file" hidden accept="image/*" onChange={(e) => e.target.files?.[0] && updateBrandLogo(e.target.files[0])} />
             </div>
+            <ProfileKeyInspector userId={authUser.uid} />
             <button type="button" className="qx-logout-btn" onClick={logout}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
               Sign Out
@@ -830,6 +838,11 @@ function App() {
       {/* Chat window or welcome screen */}
       {!selectedUser && !selectedGroup && !selectedChannel ? (
         <div className="qx-welcome">
+          {profile && !profile.phoneNumber && (
+            <button type="button" className="qx-phone-prompt" onClick={() => setShowProfilePanel(true)}>
+              Add your phone number in your profile so contacts can find you →
+            </button>
+          )}
           <div className="qx-welcome-card">
             <div className="qx-welcome-graphic">
               <div className="qx-welcome-orb">
